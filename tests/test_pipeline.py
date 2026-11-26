@@ -367,7 +367,10 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     assert apply_domain_corrections("一心一意小心一点，乃零三分，陪诺零点庆生") == (
         "一心一意小心一点，乃0三分，陪诺零点庆生"
     )
-    assert apply_domain_corrections("去家乐福买东西，还有家乐") == "去家乐福买东西，还有珈乐"
+    assert apply_domain_corrections("去家乐福买东西，还有家乐", up_name="嘉然", pub_date="2022-03-01") == "去家乐福买东西，还有珈乐"
+    assert apply_domain_corrections("去农家乐，参加乐队比赛，大家乐意", up_name="嘉然", pub_date="2022-03-01") == "去农家乐，参加乐队比赛，大家乐意"
+    assert apply_domain_corrections("2022年5月10日后不再替换嘉乐和家乐", up_name="乃琳", pub_date="2022-05-11") == "2022年5月10日后不再替换嘉乐和家乐"
+    assert apply_domain_corrections("思诺去农家乐参加乐队", up_name="思诺", pub_date="2026-10-15") == "思诺去农家乐参加乐队"
     assert apply_domain_corrections("我是一宝", up_name="心宜") == "我是宜宝"
     assert apply_domain_corrections("我是一宝", up_name="嘉然") == "我是一宝"
 

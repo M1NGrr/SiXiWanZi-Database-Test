@@ -41,6 +41,7 @@ def clean_subtitle_text(
     to_simplified: bool = True,
     apply_corrections: bool = True,
     up_name: str | None = None,
+    pub_date: str | None = None,
 ) -> str:
     """清洗单条字幕文本：繁转简 + 去除脏字符 + 枝江专有名词自动纠错."""
     if not raw:
@@ -54,7 +55,7 @@ def clean_subtitle_text(
     if apply_corrections and text:
         from .normalizer import apply_domain_corrections
 
-        text = apply_domain_corrections(text, up_name=up_name)
+        text = apply_domain_corrections(text, up_name=up_name, pub_date=pub_date)
     return text
 
 
@@ -88,6 +89,7 @@ def clean_bcc_payload(
     *,
     drop_music_tags: bool = True,
     up_name: str | None = None,
+    pub_date: str | None = None,
 ) -> List[CleanedSubtitleItem]:
     """清洗 B 站 BCC JSON 字幕结构.
 
@@ -104,7 +106,7 @@ def clean_bcc_payload(
         if not isinstance(item, dict):
             continue
         raw_text = item.get("content") if "content" in item else item.get("text", "")
-        text = clean_subtitle_text(str(raw_text or ""), up_name=up_name)
+        text = clean_subtitle_text(str(raw_text or ""), up_name=up_name, pub_date=pub_date)
         if is_noise_line(text, drop_music_tags=drop_music_tags):
             continue
         raw_start = item.get("from", item.get("start_sec", item.get("start", 0.0)))
@@ -137,6 +139,7 @@ def clean_srt_text(
     *,
     drop_music_tags: bool = True,
     up_name: str | None = None,
+    pub_date: str | None = None,
 ) -> List[CleanedSubtitleItem]:
     """解析并清洗标准 SRT 字幕文件（便于离线导入或未来接 Whisper ASR 补全）."""
     blocks = re.split(r"\r?\n\s*\r?\n", srt_content.strip())
@@ -162,7 +165,9 @@ def clean_srt_text(
             match.group("eh"), match.group("em"), match.group("es"), match.group("ems")
         )
         start_sec, end_sec = normalize_timestamp(start_sec, end_sec)
-        text = clean_subtitle_text(" ".join(lines[time_idx + 1 :]), up_name=up_name)
+        text = clean_subtitle_text(
+            " ".join(lines[time_idx + 1 :]), up_name=up_name, pub_date=pub_date
+        )
         if is_noise_line(text, drop_music_tags=drop_music_tags):
             continue
 

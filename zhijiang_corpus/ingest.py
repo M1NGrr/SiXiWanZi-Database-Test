@@ -190,7 +190,9 @@ def ingest_bvids(
                         continue
 
                     raw_sub = bili.fetch_subtitle_json(chosen.subtitle_url)
-                    cleaned_items = clean_bcc_payload(raw_sub, up_name=up_name)
+                    cleaned_items = clean_bcc_payload(
+                        raw_sub, up_name=up_name, pub_date=vinfo.pub_date
+                    )
                     source_tag = (
                         "bilibili_ai"
                         if chosen.lan.startswith("ai-") or chosen.ai_type > 0
@@ -382,10 +384,12 @@ def ingest_local_file(
     suffix = path.suffix.lower()
     if suffix == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
-        cleaned = clean_bcc_payload(payload, up_name=up_name)
+        cleaned = clean_bcc_payload(payload, up_name=up_name, pub_date=pub_date)
         lan = "local-bcc"
     elif suffix == ".srt":
-        cleaned = clean_srt_text(path.read_text(encoding="utf-8"), up_name=up_name)
+        cleaned = clean_srt_text(
+            path.read_text(encoding="utf-8"), up_name=up_name, pub_date=pub_date
+        )
         lan = "local-srt"
     else:
         raise ValueError(f"暂不支持的文件扩展名 {suffix}，请提供 .json (BCC) 或 .srt")

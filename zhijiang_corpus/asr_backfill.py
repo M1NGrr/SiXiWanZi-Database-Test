@@ -310,6 +310,7 @@ class LocalWhisperEngine:
         initial_prompt: str = DEFAULT_ZHIJIANG_PROMPT,
         language: str = "zh",
         up_name: Optional[str] = None,
+        pub_date: Optional[str] = None,
     ) -> Tuple[List[CleanedSubtitleItem], float]:
         """转录音频文件并返回清洗（含繁转简）后的句级字幕列表与实际推理耗时（秒）."""
         t0 = time.perf_counter()
@@ -353,7 +354,7 @@ class LocalWhisperEngine:
         seen: set[Tuple[float, float, str]] = set()
         for seg in segments_iter:
             for raw_start, raw_end, raw_text in _split_segment_into_lines(seg):
-                text = clean_subtitle_text(raw_text, up_name=up_name)
+                text = clean_subtitle_text(raw_text, up_name=up_name, pub_date=pub_date)
                 if is_noise_line(text, drop_music_tags=True) or _is_whisper_hallucination(text):
                     continue
                 start_sec, end_sec = normalize_timestamp(raw_start, raw_end)
@@ -676,6 +677,7 @@ def run_asr_backfill(
                     initial_prompt=prompt,
                     language="zh",
                     up_name=cur_up,
+                    pub_date=str(v["pub_date"]),
                 )
                 rows = [
                     SubtitleRow(

@@ -27,6 +27,8 @@ class CompiledReplaceRule:
     regex: re.Pattern[str]
     fts_probes: Tuple[str, ...]
     up_names: Optional[frozenset[str]]
+    min_pub_date: Optional[str] = None
+    max_pub_date: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,8 @@ def load_rules(rules_path: Path = DEFAULT_RULES_PATH) -> RulesBundle:
                 regex=re.compile(str(item["pattern"]), flags),
                 fts_probes=tuple(str(p) for p in item.get("fts_probes", []) if p),
                 up_names=frozenset(up_list) if up_list else None,
+                min_pub_date=str(item["min_pub_date"]).strip() if item.get("min_pub_date") else None,
+                max_pub_date=str(item["max_pub_date"]).strip() if item.get("max_pub_date") else None,
             )
         )
 
@@ -81,9 +85,10 @@ def apply_domain_corrections(
     text: str,
     *,
     up_name: Optional[str] = None,
+    pub_date: Optional[str] = None,
     rules_path: Path = DEFAULT_RULES_PATH,
 ) -> str:
-    """对单条字幕正文执行枝江专有名词 Tier 1 & Tier 2 纠错（幂等、安全）."""
+    """对单条字幕正文执行枝江专有名词 Tier 1 & Tier 2 纠错（支持按 UP 主与日期范围约束，幂等安全）."""
     if not text:
         return text
     bundle = load_rules(rules_path)
@@ -91,6 +96,12 @@ def apply_domain_corrections(
     for rule in bundle.replace_rules:
         if rule.up_names is not None:
             if not up_name or up_name not in rule.up_names:
+                continue
+        if rule.min_pub_date is not None:
+            if not pub_date or pub_date < rule.min_pub_date:
+                continue
+        if rule.max_pub_date is not None:
+            if not pub_date or pub_date > rule.max_pub_date:
                 continue
         if rule.regex.search(out):
             out = rule.regex.sub(rule.target, out)
@@ -188,18 +199,29 @@ def run_corpus_normalization(
                 fts_q = build_fts_query(probe)
                 if not fts_q:
                     continue
+                clauses = ["subtitles_fts MATCH ?"]
+                qparams: List[Any] = [fts_q]
                 if rule.up_names:
                     ups = list(rule.up_names)
                     ph = ",".join("?" for _ in ups)
+                    clauses.append(f"s.up_name IN ({ph})")
+                    qparams.extend(ups)
+                if rule.min_pub_date:
+                    clauses.append("s.pub_date >= ?")
+                    qparams.append(rule.min_pub_date)
+                if rule.max_pub_date:
+                    clauses.append("s.pub_date <= ?")
+                    qparams.append(rule.max_pub_date)
+
+                if len(clauses) > 1:
                     rows = conn.execute(
                         f"""
                         SELECT s.id
                           FROM subtitles_fts f
                           CROSS JOIN subtitles s ON s.id = f.rowid
-                         WHERE subtitles_fts MATCH ?
-                           AND s.up_name IN ({ph})
+                         WHERE {' AND '.join(clauses)}
                         """,
-                        (fts_q, *ups),
+                        qparams,
                     ).fetchall()
                 else:
                     rows = conn.execute(
@@ -227,7 +249,7 @@ def run_corpus_normalization(
 
         with db.session() as conn:
             rows = conn.execute(
-                f"SELECT id, up_name, bvid, page, content FROM subtitles WHERE id IN ({ph})",
+                f"SELECT id, up_name, bvid, page, pub_date, content FROM subtitles WHERE id IN ({ph})",
                 chunk,
             ).fetchall()
 
@@ -235,9 +257,10 @@ def run_corpus_normalization(
             for r in rows:
                 sid = int(r["id"])
                 up_name = str(r["up_name"])
+                pub_date = str(r["pub_date"] or "")
                 old_text = str(r["content"])
                 new_text = apply_domain_corrections(
-                    old_text, up_name=up_name, rules_path=rules_path
+                    old_text, up_name=up_name, pub_date=pub_date, rules_path=rules_path
                 )
                 if new_text == old_text:
                     unchanged_count += 1
