@@ -9,9 +9,9 @@ window.ZHIJIANG_CONFIG = {
   API_BASE: "",
   AUTHOR_NAME: "没品人类之一",
   AUTHOR_BILIBILI_URL: "https://space.bilibili.com/396896138",
-  // 创建 GitHub 仓库后填入仓库地址，例如 "https://github.com/你的用户名/zhijiang-subtitle-corpus"
+  // 创建 GitHub 仓库后填入仓库地址，例如 "https://github.com/RicojrH/zhijiang-database"
   // 留空时也可自动读取后端环境变量 ZJ_GITHUB_URL
-  GITHUB_REPO_URL: "",
+  GITHUB_REPO_URL: "https://github.com/RicojrH/zhijiang-database",
   HOT_KEYWORDS: [
     "小作文",
     "嘉心糖",

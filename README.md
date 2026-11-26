@@ -1,8 +1,9 @@
-# 枝江直播回放 AI 字幕语料库与检索系统
+# 枝江数据库 — 枝江直播回放 AI 字幕语料库与检索系统
 
 面向二创剪辑师与社区粉丝的直播回放字幕语料库，覆盖 **嘉然、贝拉、乃琳、向晚、心宜、思诺** 6 位成员近 6 年直播回放（支持 B 站官方 AI 字幕增量抓取、本地 GPU `faster-whisper` 语音补录、专有名词纠错、同音/别称模糊检索与前后端分离云端部署）。
 
 - **作者**：B 站 [`@没品人类之一`](https://space.bilibili.com/396896138)
+- **GitHub 仓库**：https://github.com/RicojrH/zhijiang-database
 - **开源协议**：[MIT License](LICENSE)
 - **云端部署指南**：见 [DEPLOY.md](DEPLOY.md)
 
