@@ -469,6 +469,35 @@ class CorpusDB:
             latest_updated = conn.execute(
                 "SELECT MAX(updated_at) AS latest_updated_at FROM videos"
             ).fetchone()
+            latest_video_row = conn.execute(
+                """
+                SELECT bvid, page, up_name, title, pub_date, pub_ts
+                  FROM videos
+                 WHERE subtitle_status = 'ok'
+                   AND is_visible = 1
+                   AND pub_date != ''
+                 ORDER BY pub_date DESC, pub_ts DESC, updated_at DESC, page ASC
+                 LIMIT 1
+                """
+            ).fetchone()
+
+        latest_video: Optional[Dict[str, Any]] = None
+        if latest_video_row:
+            lv_bvid = str(latest_video_row["bvid"] or "")
+            lv_page = int(latest_video_row["page"] or 1)
+            lv_url = (
+                f"https://www.bilibili.com/video/{lv_bvid}/?p={lv_page}"
+                if lv_page > 1
+                else f"https://www.bilibili.com/video/{lv_bvid}/"
+            )
+            latest_video = {
+                "bvid": lv_bvid,
+                "page": lv_page,
+                "up_name": str(latest_video_row["up_name"] or ""),
+                "title": str(latest_video_row["title"] or ""),
+                "pub_date": str(latest_video_row["pub_date"] or ""),
+                "video_url": lv_url,
+            }
 
         db_size_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
         return {
@@ -483,6 +512,7 @@ class CorpusDB:
             "latest_updated_at": (
                 latest_updated["latest_updated_at"] if latest_updated else None
             ),
+            "latest_video": latest_video,
             "by_up": by_up,
             "by_scene": by_scene,
         }

@@ -29,6 +29,7 @@
     totalHits: 0,
     pageLimit: 20,
     hasSearched: false,
+    announcementsExpanded: false,
     members: [],
     stats: null,
     site: {
@@ -219,6 +220,52 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  function renderAnnouncements(items) {
+    const card = $("announcementCard");
+    const listEl = $("announcementList");
+    const metaEl = $("announcementMeta");
+    const toggleBtn = $("announcementToggle");
+    if (!card || !listEl) return;
+
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) {
+      card.classList.add("hidden");
+      listEl.innerHTML = "";
+      return;
+    }
+
+    card.classList.remove("hidden");
+    const previewCount = 3;
+    const expanded = state.announcementsExpanded;
+    const visible = expanded ? list : list.slice(0, previewCount);
+
+    if (metaEl) {
+      metaEl.textContent = list.length > 1 ? `共 ${list.length} 条动态` : (list[0].date || "");
+    }
+
+    listEl.innerHTML = visible.map((it) => {
+      const level = ["info", "change", "warn"].includes(it.level) ? it.level : "info";
+      const tag = esc(it.tag || "公告");
+      const dateHtml = it.date ? `<span class="announcement-date">${esc(it.date)}</span>` : "";
+      return `
+        <li class="announcement-item">
+          <span class="announcement-tag tag-${level}">${tag}</span>
+          <span class="announcement-text">${esc(it.content)}</span>
+          ${dateHtml}
+        </li>
+      `;
+    }).join("");
+
+    if (toggleBtn) {
+      if (list.length > previewCount) {
+        toggleBtn.classList.remove("hidden");
+        toggleBtn.textContent = expanded ? "收起较早公告" : `展开全部 ${list.length} 条公告`;
+      } else {
+        toggleBtn.classList.add("hidden");
+      }
+    }
+  }
+
   function renderLandingStatsAndCards() {
     const st = state.stats;
     if (st) {
@@ -227,11 +274,35 @@
       $("statDateRange").textContent = st.date_min && st.date_max
         ? `${st.date_min} ~ ${st.date_max}`
         : "—";
+
+      const latestEl = $("statLatestVideo");
+      if (latestEl) {
+        const lv = st.latest_video;
+        if (lv && lv.bvid) {
+          const t = getTheme(lv.up_name);
+          const cleanTitle = (lv.title || lv.bvid).replace(/^【直播回放】\s*/, "");
+          const partSuffix = lv.page && lv.page > 1 ? ` · P${lv.page}` : "";
+          const fullTitle = `${lv.up_name ? `[${lv.up_name}] ` : ""}${lv.title || lv.bvid}${partSuffix}`;
+          const upHtml = lv.up_name
+            ? `<span class="stat-latest-up" style="--latest-ink:${t.ink};">[${esc(lv.up_name)}]</span>`
+            : "";
+          const href = esc(lv.video_url || `https://www.bilibili.com/video/${lv.bvid}/`);
+          latestEl.innerHTML =
+            `<span class="stat-latest-label">最新录播：</span>` +
+            `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${esc(fullTitle)}">` +
+            `${upHtml}${esc(cleanTitle)}${esc(partSuffix)}</a>`;
+        } else {
+          latestEl.innerHTML = "";
+        }
+      }
+
       const updatedEl = $("statUpdatedAt");
       if (updatedEl) {
         const ts = formatLocalDateTime(st.latest_updated_at);
-        updatedEl.textContent = ts ? `库最近更新：${ts}` : "";
+        updatedEl.textContent = ts ? `数据库同步时间：${ts}` : "";
       }
+
+      renderAnnouncements(st.announcements);
     }
 
     const byUpMap = {};
@@ -637,6 +708,13 @@
 
     $("resetBtn").addEventListener("click", resetAll);
     $("brandHome").addEventListener("click", resetAll);
+    const annToggle = $("announcementToggle");
+    if (annToggle) {
+      annToggle.addEventListener("click", () => {
+        state.announcementsExpanded = !state.announcementsExpanded;
+        if (state.stats) renderAnnouncements(state.stats.announcements);
+      });
+    }
 
     ["dateFrom", "dateTo", "sortFilter", "pageSizeFilter", "fuzzyToggle"].forEach((id) => {
       $(id).addEventListener("change", () => {

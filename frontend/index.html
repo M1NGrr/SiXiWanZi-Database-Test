@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="枝江直播回放 AI 字幕语料库检索：覆盖嘉然、贝拉、乃琳、向晚、心宜、思诺近 6 年直播回放，面向二创剪辑的毫秒级台词与热梗检索工具。" />
   <title>枝江字幕检索 · 直播回放台词与热梗语料库</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=20261126" />
 </head>
 <body>
   <div class="spectrum-bar" aria-hidden="true"></div>
@@ -117,6 +117,18 @@
 
     <!-- 默认首页总览态（不展示全量字幕，避免加载卡顿） -->
     <section class="landing-board" id="landingBoard" aria-label="语料库总览与快捷入口">
+      <div class="announcement-card hidden" id="announcementCard" aria-label="站点公告与更新动态">
+        <div class="announcement-head">
+          <div class="announcement-title">
+            <span class="announcement-dot" aria-hidden="true"></span>
+            <span>站点公告 · 更新动态</span>
+          </div>
+          <span class="announcement-meta" id="announcementMeta"></span>
+        </div>
+        <ul class="announcement-list" id="announcementList"></ul>
+        <button type="button" class="announcement-toggle hidden" id="announcementToggle">展开更多公告</button>
+      </div>
+
       <div class="notice-banner" role="note">
         <strong>检索提示：</strong>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与实际发言人不对应。
       </div>
@@ -130,9 +142,10 @@
           <div class="stat-label">覆盖有效回放分P</div>
           <div class="stat-value" id="statTotalParts">—</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card-wide">
           <div class="stat-label">收录时间跨度（实时同步）</div>
           <div class="stat-value stat-value-date" id="statDateRange">—</div>
+          <div class="stat-latest" id="statLatestVideo"></div>
           <div class="stat-sub" id="statUpdatedAt"></div>
         </div>
       </div>
@@ -209,7 +222,7 @@
     </div>
   </div>
 
-  <script src="./config.js"></script>
-  <script src="./app.js"></script>
+  <script src="./config.js?v=20261126"></script>
+  <script src="./app.js?v=20261126"></script>
 </body>
 </html>

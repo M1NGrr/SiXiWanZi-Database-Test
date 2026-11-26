@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "2026-11-26-asr-retranscribe",
+      "tag": "更新预告",
+      "level": "info",
+      "date": "2026-11-26",
+      "pinned": true,
+      "active": true,
+      "content": "由ASR生成的部分字幕存在断句问题，目前正在重新推理生成，预计27日下午更新数据库，并同步到最新状态"
+    }
+  ]
+}

@@ -2,14 +2,55 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query, Response
 
-from zhijiang_corpus.config import AppConfig, VALID_SCENE_TYPES
+from zhijiang_corpus.config import AppConfig, PROJECT_ROOT, VALID_SCENE_TYPES
 from zhijiang_corpus.db import CorpusDB
 from zhijiang_corpus.search import SearchQuery, SearchService
+
+
+def _load_announcements() -> List[Dict[str, Any]]:
+    """实时读取 config/announcements.json 中的有效公告，改文件即刻生效无需重启服务."""
+    env_path = os.getenv("ZJ_ANNOUNCEMENTS_PATH", "").strip()
+    path = Path(env_path) if env_path else (PROJECT_ROOT / "config" / "announcements.json")
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    items = raw.get("items", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+    active_items: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("active", True) is False:
+            continue
+        content = str(item.get("content", "")).strip()
+        if not content:
+            continue
+        level = str(item.get("level", "info")).strip().lower()
+        if level not in ("info", "change", "warn"):
+            level = "info"
+        active_items.append(
+            {
+                "id": str(item.get("id", "")).strip(),
+                "tag": str(item.get("tag", "公告")).strip() or "公告",
+                "level": level,
+                "date": str(item.get("date", "")).strip(),
+                "pinned": bool(item.get("pinned", False)),
+                "content": content,
+            }
+        )
+    # 置顶优先，同级按日期倒序
+    pinned = sorted([x for x in active_items if x["pinned"]], key=lambda x: x["date"], reverse=True)
+    normal = sorted([x for x in active_items if not x["pinned"]], key=lambda x: x["date"], reverse=True)
+    return pinned + normal
 
 
 def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
@@ -44,6 +85,11 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             },
         }
 
+    @router.get("/announcements", summary="站点公告与更新动态（实时读取 config/announcements.json）")
+    def announcements(response: Response) -> Dict[str, Any]:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        return {"items": _load_announcements()}
+
     @router.get("/stats", summary="语料库公开统计信息（实时读取数据库，禁止缓存）")
     def stats(response: Response) -> Dict[str, Any]:
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -58,6 +104,8 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             "date_min": raw["date_min"],
             "date_max": raw["date_max"],
             "latest_updated_at": raw.get("latest_updated_at"),
+            "latest_video": raw.get("latest_video"),
+            "announcements": _load_announcements(),
             "by_up": raw["by_up"],
             "by_scene": raw["by_scene"],
         }

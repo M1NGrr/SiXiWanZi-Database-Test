@@ -305,6 +305,13 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
     assert "db_path" not in st  # 公网统计不暴露服务器本地磁盘路径
     assert st["video_parts_total"] == 6
     assert st["subtitles_total"] > 20
+    assert st["latest_video"] is not None
+    assert st["latest_video"]["bvid"].startswith("BV1")
+    assert st["latest_video"]["video_url"].startswith("https://www.bilibili.com/video/")
+    assert isinstance(st["announcements"], list)
+    ann_res = pub_client.get("/api/v1/announcements")
+    assert ann_res.status_code == 200
+    assert any("ASR" in item["content"] for item in ann_res.json()["items"])
 
     sr = pub_client.get("/api/v1/search", params={"q": "小作文", "up_name": "嘉然,向晚"}).json()
     assert sr["pagination"]["total"] == 2
