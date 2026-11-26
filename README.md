@@ -6,6 +6,7 @@
 - **GitHub 仓库**：https://github.com/RicojrH/zhijiang-database
 - **开源协议**：[MIT License](LICENSE)
 - **云端部署指南**：见 [DEPLOY.md](DEPLOY.md)
+- **在线访问数据库**：https://zjdb.mprlzy.top
 
 > **关于数据库文件**：完整的近 6 年 579 万条 SQLite 语料库约 2.12 GB，超过 GitHub 单文件限制，因此仓库仅开源完整代码、建库 Schema、纠错词表与前后端界面；你可按下方步骤自行抓取构建，或直接访问作者部署的公开检索站。
 
