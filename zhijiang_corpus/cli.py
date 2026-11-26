@@ -13,7 +13,7 @@ import qrcode
 import uvicorn
 
 from .api import create_app
-from .asr_backfill import run_asr_backfill
+from .asr_backfill import resplit_legacy_asr, run_asr_backfill
 from .bilibili_client import BilibiliClient
 from .clip_planner import plan_clip_job
 from .config import VALID_SCENE_TYPES, load_config, save_cookie_to_env
@@ -239,12 +239,14 @@ def cmd_backfill_asr(args: argparse.Namespace) -> int:
             max_duration=args.max_duration,
             shortest_first=args.shortest_first,
             force=args.force,
+            retranscribe_legacy_asr=args.retranscribe_legacy_asr,
             model_name=args.model,
             device=args.device,
             compute_type=args.compute_type,
             batch_size=args.batch_size,
             beam_size=args.beam_size,
-            word_timestamps=args.word_timestamps,
+            word_timestamps=not args.no_word_timestamps,
+            chunk_length=args.chunk_length,
             workers=args.workers,
             prefetch=args.prefetch,
             shard_index=args.shard_index,
@@ -258,6 +260,19 @@ def cmd_backfill_asr(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\n[INTERRUPTED] 收到 Ctrl+C，已完成转录的分 P 均已安全提交入库，下次重跑会自动跳过。")
         return 0
+
+
+def cmd_resplit_asr(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db)
+    db = CorpusDB(cfg.db_path)
+    res = resplit_legacy_asr(
+        db,
+        max_chars=args.max_chars,
+        dry_run=args.dry_run,
+        progress_cb=lambda m: print(m, flush=True),
+    )
+    _print_json(res)
+    return 0
 
 
 def cmd_ingest_local(args: argparse.Namespace) -> int:
@@ -578,12 +593,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_asr.add_argument("--max-duration", type=int, default=None, help="仅处理不超过此秒数的分 P")
     p_asr.add_argument("--shortest-first", action="store_true", help="优先处理时长较短的分 P（适合试跑）")
     p_asr.add_argument("--force", action="store_true", help="强制覆盖已有字幕（慎用）")
+    p_asr.add_argument(
+        "--retranscribe-legacy-asr",
+        action="store_true",
+        help="仅重录旧版粗断句 asr-large-v3-turbo 分 P 并升级为词级时间戳 asr-v2-large-v3-turbo（支持断点续跑）",
+    )
     p_asr.add_argument("--model", default="large-v3-turbo", help="Whisper 模型名（默认 large-v3-turbo）")
     p_asr.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"], help="推理设备")
     p_asr.add_argument("--compute-type", default="int8_float16", help="计算精度（推荐 int8_float16）")
-    p_asr.add_argument("--batch-size", type=int, default=16, help="GPU 批处理大小（12GB 显存稳定推荐 16）")
-    p_asr.add_argument("--beam-size", type=int, default=1, help="解码束宽（默认 1 极速模式，可选 2~5）")
-    p_asr.add_argument("--word-timestamps", action="store_true", help="开启词级 DTW 对齐（更细但慢约 40%）")
+    p_asr.add_argument("--batch-size", type=int, default=12, help="GPU 批处理大小（默认 12）")
+    p_asr.add_argument("--beam-size", type=int, default=2, help="解码束宽（默认 2，减少漏标点与乱码）")
+    p_asr.add_argument("--chunk-length", type=int, default=10, help="VAD 切片上限秒数（默认 10s，防止合并超长句）")
+    p_asr.add_argument("--word-timestamps", action="store_true", help="开启词级时间戳对齐（现已默认开启，保留参数兼容）")
+    p_asr.add_argument("--no-word-timestamps", action="store_true", help="关闭词级时间戳（仅极速测试用）")
     p_asr.add_argument("--workers", type=int, default=1, help="单进程内 GPU 推理线程数（默认 1，多并行请用分片多进程）")
     p_asr.add_argument("--prefetch", type=int, default=2, help="后台预取下载+FFmpeg 转码线程数（推荐 1~2）")
     p_asr.add_argument("--shard-index", type=int, default=0, help="多进程分片序号（0 开始）")
@@ -592,6 +614,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_asr.add_argument("--keep-audio", action="store_true", help="保留临时音频文件（调试用）")
     p_asr.add_argument("--cookie", default=None, help="临时覆盖 B 站 Cookie")
     p_asr.set_defaults(func=cmd_backfill_asr)
+
+    p_resplit = sub.add_parser(
+        "resplit-asr",
+        help="对存量 ASR 超长句字幕执行多级智能重断句与异常符号清理（纯 CPU 几秒完成）",
+    )
+    p_resplit.add_argument("--max-chars", type=int, default=22, help="单行目标字数上限（默认 22 字）")
+    p_resplit.add_argument("--dry-run", action="store_true", help="仅预览重断句前后行数，不写库")
+    p_resplit.set_defaults(func=cmd_resplit_asr)
 
     p_stats = sub.add_parser("stats", help="查看当前语料库统计概览")
     p_stats.set_defaults(func=cmd_stats)

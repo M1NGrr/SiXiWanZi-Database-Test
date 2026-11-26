@@ -10,7 +10,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from zhijiang_corpus.api import create_app
-from zhijiang_corpus.asr_backfill import _is_whisper_hallucination, list_no_subtitle_targets
+from zhijiang_corpus.asr_backfill import (
+    _is_whisper_hallucination,
+    _sanitize_asr_text,
+    _split_text_proportionally,
+    list_no_subtitle_targets,
+    resplit_legacy_asr,
+)
 from zhijiang_corpus.bilibili_client import SubtitleTrack, VideoInfo, VideoPageInfo
 from zhijiang_corpus.cleaner import clean_bcc_payload, clean_srt_text
 from zhijiang_corpus.clip_planner import plan_clip_job
@@ -362,6 +368,117 @@ def test_asr_backfill_helpers(tmp_path: Path) -> None:
     assert [t["bvid"] for t in targets] == ["BV1LONG00001"]
     assert _is_whisper_hallucination("以下是B站虚拟偶像嘉然") is True
     assert _is_whisper_hallucination("今天晚上吃什么呀") is False
+
+    # 校验 ASR 异常标点清洗与多级断句切分
+    assert _sanitize_asr_text("我们去玩吧﹐然后回家﹒") == "我们去玩吧，然后回家。"
+    long_text = (
+        "今天晚上大家一起来枝江看直播吧，我觉得这个新衣服真的特别好看，"
+        "而且背景音乐也非常带感，你们觉得呢？如果喜欢的话记得点个关注呀！"
+    )
+    pieces = _split_text_proportionally(10.0, 40.0, long_text, max_chars=22)
+    assert len(pieces) >= 4
+    assert all(len(text) <= 28 for _, _, text in pieces)
+    assert pieces[0][0] == pytest.approx(10.0, abs=0.05)
+    assert pieces[-1][1] == pytest.approx(40.0, abs=0.05)
+    for i in range(len(pieces) - 1):
+        assert pieces[i][0] <= pieces[i][1] <= pieces[i + 1][0] + 0.01
+
+    # 无标点超长连续口语也必须强制软切分
+    unpunct = "其实我今天本来是想早点起床准备直播的但是闹钟响了之后我又赖床了半个小时结果差点迟到"
+    pieces_u = _split_text_proportionally(0.0, 20.0, unpunct, max_chars=22)
+    assert len(pieces_u) >= 2
+    assert all(len(text) <= 28 for _, _, text in pieces_u)
+
+    # 校验 resplit_legacy_asr 仅重切旧版 ASR 且保留 asr-large-v3-turbo 标记供 GPU 重录识别
+    from zhijiang_corpus.db import SubtitleRow
+
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1LEGACY001",
+            page=1,
+            cid=3,
+            up_name="嘉然",
+            pub_date="2026-01-03",
+            duration_sec=120,
+            subtitle_status="ok",
+            subtitle_lan="asr-large-v3-turbo",
+        ),
+        [
+            SubtitleRow(
+                up_name="嘉然",
+                bvid="BV1LEGACY001",
+                page=1,
+                pub_date="2026-01-03",
+                start_sec=0.0,
+                end_sec=30.0,
+                content=long_text,
+                source="asr-large-v3-turbo",
+            )
+        ],
+    )
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1NEWASR001",
+            page=1,
+            cid=4,
+            up_name="嘉然",
+            pub_date="2026-01-04",
+            duration_sec=120,
+            subtitle_status="ok",
+            subtitle_lan="asr-v2-large-v3-turbo",
+        ),
+        [
+            SubtitleRow(
+                up_name="嘉然",
+                bvid="BV1NEWASR001",
+                page=1,
+                pub_date="2026-01-04",
+                start_sec=0.0,
+                end_sec=3.0,
+                content="短句无需重切",
+                source="asr-v2-large-v3-turbo",
+            )
+        ],
+    )
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1OFFICIAL1",
+            page=1,
+            cid=5,
+            up_name="嘉然",
+            pub_date="2026-01-05",
+            duration_sec=120,
+            subtitle_status="ok",
+            subtitle_lan="ai-zh",
+        ),
+        [
+            SubtitleRow(
+                up_name="嘉然",
+                bvid="BV1OFFICIAL1",
+                page=1,
+                pub_date="2026-01-05",
+                start_sec=0.0,
+                end_sec=3.0,
+                content="官方字幕不动",
+                source="ai-zh",
+            )
+        ],
+    )
+
+    res = resplit_legacy_asr(db, max_chars=22, dry_run=False)
+    assert res["parts_modified"] == 1
+    assert res["rows_after"] > res["rows_before"]
+
+    with db.connect() as conn:
+        vrow = conn.execute(
+            "SELECT subtitle_lan, line_count FROM videos WHERE bvid='BV1LEGACY001' AND page=1"
+        ).fetchone()
+        assert vrow["subtitle_lan"] == "asr-large-v3-turbo"
+        assert vrow["line_count"] >= 4
+
+    # 校验 --retranscribe-legacy-asr 目标筛选只选中旧版 asr-large-v3-turbo，跳过 v2 与官方字幕
+    legacy_targets = list_no_subtitle_targets(db, min_duration=15, limit=10, retranscribe_legacy_asr=True)
+    assert [t["bvid"] for t in legacy_targets] == ["BV1LEGACY001"]
 
 
 def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:

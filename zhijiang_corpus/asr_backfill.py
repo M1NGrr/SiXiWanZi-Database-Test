@@ -131,30 +131,143 @@ def _is_whisper_hallucination(text: str) -> bool:
     return False
 
 
+_COMPAT_PUNCT_TABLE = str.maketrans(
+    {
+        "\ufffd": "",
+        "﹔": "；",
+        "﹖": "？",
+        "﹗": "！",
+        "﹐": "，",
+        "﹒": "。",
+        "｡": "。",
+        "﹑": "、",
+        "､": "、",
+        "﹕": "：",
+        "﹞": "）",
+        "﹝": "（",
+        "﹘": "—",
+        "﹍": "",
+        "﹎": "",
+        "ﹴ": "",
+        "﹧": "",
+    }
+)
+_CLAUSE_HINT_RE = re.compile(
+    r"(?=(?:就是|然后|但是|因为|所以|不过|其实|而且|如果|哈哈+|呜呜+|啊啊+|嗯嗯+|对对对|"
+    r"不是|这个|那个|你们|我们|大家|感觉|觉得|好像|真的|可以|怎么|什么|为什么))"
+)
+
+
+def _sanitize_asr_text(text: str) -> str:
+    cleaned = str(text or "").translate(_COMPAT_PUNCT_TABLE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _split_long_unpunctuated(piece: str, max_chars: int = 22) -> List[str]:
+    """对缺乏标点的中文口语长串按自然语意词边界/字长进行软断句，不截断英文单词."""
+    s = piece.strip()
+    if len(s) <= max_chars:
+        return [s] if s else []
+
+    out: List[str] = []
+    while len(s) > max_chars:
+        # 1) 优先在 [10, max_chars] 区间找中文口语连接词起点
+        cut = -1
+        for m in _CLAUSE_HINT_RE.finditer(s):
+            pos = m.start()
+            if 10 <= pos <= max_chars:
+                cut = pos
+            elif pos > max_chars:
+                break
+        # 2) 次选：在 [10, max_chars] 内找空格
+        if cut < 0:
+            sp = s.rfind(" ", 10, max_chars + 1)
+            if sp >= 10:
+                cut = sp
+        # 3) 兜底：在目标长度附近切分，避免截断连续英文/数字
+        if cut < 0:
+            cut = min(len(s), max(14, max_chars - 3))
+            while cut < len(s) and cut < max_chars + 4 and s[cut - 1].isascii() and s[cut - 1].isalnum() and s[cut].isascii() and s[cut].isalnum():
+                cut += 1
+        head = s[:cut].strip()
+        if head:
+            out.append(head)
+        s = s[cut:].strip()
+    if s:
+        out.append(s)
+    return out
+
+
 def _split_text_proportionally(
-    start_sec: float, end_sec: float, text: str
+    start_sec: float,
+    end_sec: float,
+    text: str,
+    *,
+    max_chars: int = 22,
 ) -> List[Tuple[float, float, str]]:
-    """当未开启耗时的 word_timestamps 时，对 <=8s 语音段按中文句末标点等比分配起止秒数."""
-    cleaned = text.strip()
+    """多级智能断句：强标点 -> 弱标点 -> 空格 -> 中文口语软边界，并按字符占比分配时间戳."""
+    cleaned = _sanitize_asr_text(text)
     if not cleaned:
         return []
-    if len(cleaned) <= 28 or (end_sec - start_sec) <= 5.0:
+    if len(cleaned) <= max_chars and (end_sec - start_sec) <= 6.5:
         return [(start_sec, end_sec, cleaned)]
 
-    # 按句末强标点切分并保留标点
-    parts = [p.strip() for p in re.split(r"(?<=[。！？!?])", cleaned) if p.strip()]
-    if len(parts) <= 1:
-        return [(start_sec, end_sec, cleaned)]
+    # 第 1 级：按句末强标点切分
+    stage1 = [p.strip() for p in re.split(r"(?<=[。！？!?])", cleaned) if p.strip()]
 
-    # 合并过短碎片（<6 字）到相邻句
+    # 第 2 级：对仍超长的句子按弱标点（逗号/顿号/分号/冒号/省略号）切分
+    stage2: List[str] = []
+    for p in stage1:
+        if len(p) <= max_chars:
+            stage2.append(p)
+        else:
+            subs = [x.strip() for x in re.split(r"(?<=[，,、；;：:…])", p) if x.strip()]
+            stage2.extend(subs if len(subs) > 1 else [p])
+
+    # 第 3 级：对仍超长的句子按多词空格切分（保留连续英文短语，不把纯英文按单词拆碎）
+    stage3: List[str] = []
+    for p in stage2:
+        if len(p) <= max_chars:
+            stage3.append(p)
+        elif " " in p:
+            tokens = [x.strip() for x in p.split(" ") if x.strip()]
+            buf = ""
+            for tok in tokens:
+                sep = " " if (buf and buf[-1].isascii() and tok[0].isascii()) else ""
+                cand = f"{buf}{sep}{tok}" if buf else tok
+                if buf and len(cand) > max_chars:
+                    stage3.append(buf)
+                    buf = tok
+                else:
+                    buf = cand
+            if buf:
+                stage3.append(buf)
+        else:
+            stage3.append(p)
+
+    # 第 4 级：对无标点超长口语串做软断句
+    stage4: List[str] = []
+    for p in stage3:
+        if len(p) <= max_chars + 4:
+            stage4.append(p)
+        else:
+            stage4.extend(_split_long_unpunctuated(p, max_chars=max_chars))
+
+    # 合并过短碎片（<4 字）到相邻短句（合并后不超过 max_chars + 6）
     merged: List[str] = []
-    for p in parts:
-        if merged and len(p) < 6:
+    for p in stage4:
+        if not p:
+            continue
+        if merged and len(p) < 4 and (len(merged[-1]) + len(p)) <= (max_chars + 6):
+            merged[-1] += p
+        elif merged and len(merged[-1]) < 4 and (len(merged[-1]) + len(p)) <= (max_chars + 6):
             merged[-1] += p
         else:
             merged.append(p)
+
     if len(merged) <= 1:
-        return [(start_sec, end_sec, cleaned)]
+        return [(start_sec, end_sec, merged[0] if merged else cleaned)]
 
     total_chars = sum(len(x) for x in merged) or 1
     dur = max(0.0, end_sec - start_sec)
@@ -171,7 +284,7 @@ def _split_text_proportionally(
 
 
 def _split_segment_into_lines(seg: Any) -> List[Tuple[float, float, str]]:
-    """将 Whisper 语音段切分为 2~8 秒的句级字幕（有 word_timestamps 用词级，否则按标点等比切分）."""
+    """将 Whisper 语音段切分为 2~6 秒的句级字幕（有 word_timestamps 用词级，再由多级断句兜底）."""
     words = getattr(seg, "words", None) or []
     if not words:
         return _split_text_proportionally(float(seg.start), float(seg.end), str(seg.text or ""))
@@ -184,20 +297,23 @@ def _split_segment_into_lines(seg: Any) -> List[Tuple[float, float, str]]:
     def flush() -> None:
         nonlocal buf_text, cur_start
         if buf_text and cur_start is not None:
-            joined = "".join(buf_text).strip()
+            joined = _sanitize_asr_text("".join(buf_text))
             if joined:
-                lines.append((cur_start, cur_end, joined))
+                if len(joined) > 26:
+                    lines.extend(_split_text_proportionally(cur_start, cur_end, joined, max_chars=22))
+                else:
+                    lines.append((cur_start, cur_end, joined))
         buf_text = []
         cur_start = None
 
     for w in words:
-        w_text = str(getattr(w, "word", "") or "")
+        w_text = _sanitize_asr_text(str(getattr(w, "word", "") or ""))
         if not w_text:
             continue
         w_start = float(getattr(w, "start", cur_end))
         w_end = float(getattr(w, "end", w_start))
 
-        if cur_start is not None and (w_start - cur_end) >= 0.6 and len("".join(buf_text)) >= 4:
+        if cur_start is not None and (w_start - cur_end) >= 0.45 and len("".join(buf_text)) >= 4:
             flush()
 
         if cur_start is None:
@@ -211,13 +327,13 @@ def _split_segment_into_lines(seg: Any) -> List[Tuple[float, float, str]]:
 
         if cur_joined.endswith(_HARD_PUNCT_END) and cur_len >= 4:
             flush()
-        elif cur_joined.endswith(_SOFT_PUNCT_END) and (cur_len >= 14 or cur_dur >= 3.5):
+        elif cur_joined.endswith(_SOFT_PUNCT_END) and (cur_len >= 10 or cur_dur >= 2.8):
             flush()
-        elif cur_len >= 34 or cur_dur >= 7.5:
+        elif cur_len >= 22 or cur_dur >= 5.5:
             flush()
 
     flush()
-    return lines or [(float(seg.start), float(seg.end), str(seg.text or ""))]
+    return lines or _split_text_proportionally(float(seg.start), float(seg.end), str(seg.text or ""))
 
 
 def load_16k_wav_as_float32(wav_path: Path) -> Any:
@@ -256,9 +372,10 @@ class LocalWhisperEngine:
         *,
         device: str = "auto",
         compute_type: str = "int8_float16",
-        batch_size: int = 32,
-        beam_size: int = 1,
-        word_timestamps: bool = False,
+        batch_size: int = 12,
+        beam_size: int = 2,
+        word_timestamps: bool = True,
+        chunk_length: int = 10,
         use_hf_mirror: bool = False,
     ):
         configure_local_cache_dirs()
@@ -291,6 +408,7 @@ class LocalWhisperEngine:
         self.batch_size = max(1, int(batch_size))
         self.beam_size = max(1, int(beam_size))
         self.word_timestamps = bool(word_timestamps)
+        self.chunk_length = max(5, min(30, int(chunk_length)))
 
         self._model = WhisperModel(
             model_name,
@@ -315,9 +433,9 @@ class LocalWhisperEngine:
         """转录音频文件并返回清洗（含繁转简）后的句级字幕列表与实际推理耗时（秒）."""
         t0 = time.perf_counter()
         vad_params = {
-            "min_silence_duration_ms": 300,
-            "speech_pad_ms": 150,
-            "max_speech_duration_s": 8 if not self.word_timestamps else 12,
+            "min_silence_duration_ms": 250,
+            "speech_pad_ms": 120,
+            "max_speech_duration_s": 8,
         }
         audio_input = (
             load_16k_wav_as_float32(audio_path)
@@ -342,6 +460,7 @@ class LocalWhisperEngine:
             segments_iter, _info = self._batched.transcribe(
                 audio_input,
                 batch_size=self.batch_size,
+                chunk_length=self.chunk_length,
                 **common_kwargs,
             )
         else:
@@ -402,11 +521,15 @@ def list_no_subtitle_targets(
     shortest_first: bool = False,
     limit: Optional[int] = 5,
     include_ok_force: bool = False,
+    retranscribe_legacy_asr: bool = False,
 ) -> List[Dict[str, Any]]:
-    """查询待 ASR 补录的回放分 P 列表."""
+    """查询待 ASR 补录的回放分 P 列表（支持只重录旧版粗断句 asr-large-v3-turbo 分 P）."""
     clauses = ["1=1"]
     params: List[Any] = []
-    if not include_ok_force:
+    if retranscribe_legacy_asr:
+        clauses.append("subtitle_status = 'ok'")
+        clauses.append("subtitle_lan = 'asr-large-v3-turbo'")
+    elif not include_ok_force:
         clauses.append("subtitle_status = 'no_subtitle'")
     if bvid:
         clauses.append("bvid = ?")
@@ -462,12 +585,14 @@ def run_asr_backfill(
     max_duration: Optional[int] = None,
     shortest_first: bool = False,
     force: bool = False,
+    retranscribe_legacy_asr: bool = False,
     model_name: str = "large-v3-turbo",
     device: str = "auto",
     compute_type: str = "int8_float16",
-    batch_size: int = 16,
-    beam_size: int = 1,
-    word_timestamps: bool = False,
+    batch_size: int = 12,
+    beam_size: int = 2,
+    word_timestamps: bool = True,
+    chunk_length: int = 10,
     workers: int = 1,
     prefetch: int = 2,
     shard_index: int = 0,
@@ -498,6 +623,7 @@ def run_asr_backfill(
         shortest_first=shortest_first,
         limit=limit,
         include_ok_force=force,
+        retranscribe_legacy_asr=retranscribe_legacy_asr,
     )
     eff_shard_total = max(1, int(shard_total))
     eff_shard_index = int(shard_index) % eff_shard_total
@@ -536,6 +662,7 @@ def run_asr_backfill(
             batch_size=batch_size,
             beam_size=beam_size,
             word_timestamps=word_timestamps,
+            chunk_length=chunk_length,
             use_hf_mirror=use_hf_mirror,
         )
         engines.append(eng)
@@ -707,7 +834,7 @@ def run_asr_backfill(
                     pub_date=str(v["pub_date"]),
                     pub_ts=int(v.get("pub_ts") or 0),
                     duration_sec=cur_dur,
-                    subtitle_lan=f"asr-{model_name}",
+                    subtitle_lan=f"asr-v2-{model_name}" if word_timestamps else f"asr-{model_name}",
                     subtitle_status="ok" if rows else "asr_empty",
                     line_count=len(rows),
                     scene_type=str(v.get("scene_type") or "unknown"),
@@ -719,7 +846,7 @@ def run_asr_backfill(
                 )
 
                 inserted, _dup = db.save_video_and_subtitles(
-                    vid_rec, rows, replace_existing=force
+                    vid_rec, rows, replace_existing=(force or retranscribe_legacy_asr)
                 )
                 rtf = (cur_dur / asr_sec) if (cur_dur > 0 and asr_sec > 0) else 0.0
                 with summary_lock:
@@ -798,3 +925,146 @@ def run_asr_backfill(
         summary.wall_sec = round(time.perf_counter() - wall_t0, 2)
 
     return summary
+
+
+def resplit_legacy_asr(
+    db: CorpusDB,
+    *,
+    max_chars: int = 22,
+    dry_run: bool = False,
+    progress_cb: Optional[ProgressCallback] = None,
+) -> Dict[str, Any]:
+    """对现有数据库里的所有旧 ASR 字幕执行多级智能重断句 + 异常符号清理（纯 CPU 几秒完成，无需重跑 GPU）."""
+    from .tokenizer import tokenize_for_fts
+
+    t0 = time.perf_counter()
+
+    def emit(msg: str) -> None:
+        if progress_cb:
+            progress_cb(msg)
+
+    with db.session() as conn:
+        parts = conn.execute(
+            """
+            SELECT bvid, page, up_name, pub_date, scene_type, is_visible
+              FROM videos
+             WHERE subtitle_lan LIKE 'asr%' AND subtitle_status = 'ok'
+             ORDER BY pub_date DESC, bvid DESC, page ASC
+            """
+        ).fetchall()
+
+    parts_modified = 0
+    rows_before_total = 0
+    rows_after_total = 0
+
+    for idx, p in enumerate(parts, start=1):
+        bvid = str(p["bvid"])
+        page = int(p["page"])
+        up_name = str(p["up_name"])
+        pub_date = str(p["pub_date"])
+
+        with db.session() as conn:
+            orig_rows = conn.execute(
+                """
+                SELECT start_sec, end_sec, content, scene_type, is_visible, source
+                  FROM subtitles
+                 WHERE bvid = ? AND page = ?
+                 ORDER BY start_sec ASC, id ASC
+                """,
+                (bvid, page),
+            ).fetchall()
+
+            rows_before_total += len(orig_rows)
+            new_rows: List[Tuple[Any, ...]] = []
+            seen: set[Tuple[float, float, str]] = set()
+            changed = False
+
+            for r in orig_rows:
+                s0 = float(r["start_sec"])
+                e0 = float(r["end_sec"])
+                txt = str(r["content"] or "")
+                sc = str(r["scene_type"])
+                vis = int(r["is_visible"])
+                src = str(r["source"])
+
+                pieces = _split_text_proportionally(s0, e0, txt, max_chars=max_chars)
+                if len(pieces) != 1 or (pieces and pieces[0][2] != txt):
+                    changed = True
+
+                for ps, pe, pt in pieces:
+                    cleaned = clean_subtitle_text(
+                        pt, up_name=up_name, pub_date=pub_date
+                    )
+                    if is_noise_line(cleaned, drop_music_tags=True):
+                        changed = True
+                        continue
+                    ns, ne = normalize_timestamp(ps, pe)
+                    key = (ns, ne, cleaned)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    new_rows.append(
+                        (
+                            up_name,
+                            bvid,
+                            page,
+                            pub_date,
+                            ns,
+                            ne,
+                            cleaned,
+                            tokenize_for_fts(cleaned),
+                            sc,
+                            vis,
+                            src,
+                        )
+                    )
+
+            rows_after_total += len(new_rows)
+            if changed:
+                parts_modified += 1
+                if not dry_run:
+                    conn.execute(
+                        "DELETE FROM subtitles WHERE bvid = ? AND page = ?",
+                        (bvid, page),
+                    )
+                    conn.executemany(
+                        """
+                        INSERT OR IGNORE INTO subtitles (
+                            up_name, bvid, page, pub_date,
+                            start_sec, end_sec, content, content_fts,
+                            scene_type, is_visible, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        new_rows,
+                    )
+                    actual = int(
+                        conn.execute(
+                            "SELECT COUNT(*) FROM subtitles WHERE bvid = ? AND page = ?",
+                            (bvid, page),
+                        ).fetchone()[0]
+                    )
+                    conn.execute(
+                        """
+                        UPDATE videos
+                           SET line_count = ?,
+                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                         WHERE bvid = ? AND page = ?
+                        """,
+                        (actual, bvid, page),
+                    )
+
+        if idx % 100 == 0 or idx == len(parts):
+            emit(
+                f"[重断句 {idx}/{len(parts)}] 改动分P: {parts_modified} | "
+                f"行数: {rows_before_total:,} -> {rows_after_total:,}"
+            )
+
+    elapsed = round(time.perf_counter() - t0, 2)
+    return {
+        "dry_run": dry_run,
+        "asr_parts_scanned": len(parts),
+        "parts_modified": parts_modified,
+        "rows_before": rows_before_total,
+        "rows_after": rows_after_total,
+        "elapsed_sec": elapsed,
+    }
