@@ -170,7 +170,7 @@ def apply_delta(
     db: CorpusDB,
     delta_path: str | Path,
     *,
-    optimize_threshold: int = 50000,
+    optimize: bool = False,
 ) -> Dict[str, Any]:
     """在云端数据库上热应用增量补丁包（SQLite WAL 事务 + FTS5 触发器自动同步，零停服）."""
     path = Path(delta_path)
@@ -252,8 +252,9 @@ def apply_delta(
                 parts_applied += 1
                 subtitles_inserted += actual_count
 
-        # 若单次增量非常大则顺手压缩 FTS5 段；否则仅做非阻塞 PASSIVE checkpoint（绝不阻塞公网读请求）
-        if subtitles_inserted >= optimize_threshold:
+        # 默认不自动触发整库 2GB FTS5 全量 optimize（避免云端 2C2G 磁盘卡顿 1~3 分钟）；
+        # 仅执行非阻塞 PASSIVE checkpoint，立即对公网读请求生效且零停服
+        if optimize:
             with db.session() as conn:
                 conn.execute("INSERT INTO subtitles_fts(subtitles_fts) VALUES('optimize');")
                 conn.execute("ANALYZE;")
