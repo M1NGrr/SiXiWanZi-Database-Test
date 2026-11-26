@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>枝江字幕库 · 本地后端调试台</title>
+  <title>四禧丸子直播语料库 · 本地后端调试台</title>
   <style>
     :root {
       --bg: #f4f6f9;
@@ -126,7 +126,7 @@
 <header>
   <div class="header-inner">
     <div class="brand">
-      <h1>枝江字幕库 · 本地后端运维台</h1>
+      <h1>四禧丸子直播语料库 · 本地后端运维台</h1>
       <span><a href="/" target="_blank">打开公开前端页 (/) ↗</a> · <a href="/docs" target="_blank">OpenAPI 文档</a></span>
     </div>
     <div class="stat-pills">
@@ -147,19 +147,17 @@
   <section id="view-search">
     <div class="panel">
       <div class="search-bar">
-        <input id="qInput" type="text" placeholder="搜台词、搜热梗、搜名场面… 如：小作文 / 嘉心糖 / 心球仪（空格分隔多词）" />
+        <input id="qInput" type="text" placeholder="搜台词、搜热梗、搜名场面… 如：黑话 / 爆 / 羞死了 / 四禧丸子（空格分隔多词）" />
         <button class="btn" onclick="runSearch(1)">搜索字幕</button>
         <button class="btn sec" onclick="resetFilters()">重置</button>
       </div>
       <div class="chips" id="upChips">
         <span style="font-size:13px;color:var(--muted);">UP 主：</span>
         <button class="chip active" data-up="" onclick="toggleUp(this)">全部</button>
-        <button class="chip" data-up="嘉然" style="border-color:#e799b0;color:#9c3a5a;" onclick="toggleUp(this)">嘉然</button>
-        <button class="chip" data-up="贝拉" style="border-color:#db7d74;color:#a13a31;" onclick="toggleUp(this)">贝拉</button>
-        <button class="chip" data-up="乃琳" style="border-color:#576690;color:#364369;" onclick="toggleUp(this)">乃琳</button>
-        <button class="chip" data-up="向晚" style="border-color:#9ac8e2;color:#225f80;" onclick="toggleUp(this)">向晚</button>
-        <button class="chip" data-up="心宜" style="border-color:#c93773;color:#9d2256;" onclick="toggleUp(this)">心宜</button>
-        <button class="chip" data-up="思诺" style="border-color:#7252c0;color:#513399;" onclick="toggleUp(this)">思诺</button>
+        <button class="chip" data-up="沐霂" style="border-color:#a1d29a;color:#2e6a29;" onclick="toggleUp(this)">沐霂</button>
+        <button class="chip" data-up="又一" style="border-color:#e3ba09;color:#8a6a00;" onclick="toggleUp(this)">又一</button>
+        <button class="chip" data-up="恬豆" style="border-color:#a7c9d3;color:#2c6475;" onclick="toggleUp(this)">恬豆</button>
+        <button class="chip" data-up="梨安" style="border-color:#e38691;color:#9e3342;" onclick="toggleUp(this)">梨安</button>
       </div>
       <div class="filters-row">
         <label>场景：
@@ -211,12 +209,10 @@
         <label>UP 主：
           <select id="vUpFilter" onchange="loadVideos()">
             <option value="">全部</option>
-            <option value="嘉然">嘉然</option>
-            <option value="贝拉">贝拉</option>
-            <option value="乃琳">乃琳</option>
-            <option value="向晚">向晚</option>
-            <option value="心宜">心宜</option>
-            <option value="思诺">思诺</option>
+            <option value="沐霂">沐霂</option>
+            <option value="又一">又一</option>
+            <option value="恬豆">恬豆</option>
+            <option value="梨安">梨安</option>
           </select>
         </label>
         <label>场景：
@@ -290,13 +286,11 @@
         <div class="filters-row" style="margin-top:0;">
           <label>目标成员：
             <select id="ingTarget">
-              <option value="all">全部 6 位成员</option>
-              <option value="嘉然">嘉然（series 222940）</option>
-              <option value="贝拉">贝拉（series 222938）</option>
-              <option value="乃琳">乃琳（series 222754）</option>
-              <option value="向晚">向晚（series 222748）</option>
-              <option value="心宜">心宜（series 3698069）</option>
-              <option value="思诺">思诺（series 3692011）</option>
+              <option value="all">全部 4 位成员</option>
+              <option value="沐霂">沐霂（series 2004017）</option>
+              <option value="又一">又一（series 1975929）</option>
+              <option value="恬豆">恬豆（series 1961996）</option>
+              <option value="梨安">梨安（series 2001839）</option>
             </select>
           </label>
           <label>每人抓取场次：

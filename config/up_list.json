@@ -1,78 +1,56 @@
 {
   "members": [
     {
-      "up_name": "嘉然",
-      "uid": 672328094,
-      "official_name": "嘉然今天吃什么",
-      "group": "A-SOUL",
-      "fan_name": "嘉心糖",
-      "color": "#E799B0",
-      "replay_series_id": 222940,
+      "up_name": "沐霂",
+      "uid": 1878154667,
+      "official_name": "沐霂是MUMU呀",
+      "group": "四禧丸子",
+      "fan_name": "小沐标",
+      "color": "#A1D29A",
+      "replay_series_id": 2004017,
       "replay_series_name": "直播回放",
-      "aliases": ["嘉然", "然然", "嘉然今天吃什么", "Diana", "小嘉然", "然比"]
+      "aliases": ["沐霂", "沐霂是MUMU呀", "MUMU", "大沐博士", "沐霖", "牛哥", "草鱼", "GN头子", "GN 头子"]
     },
     {
-      "up_name": "贝拉",
-      "uid": 672353429,
-      "official_name": "贝拉kira",
-      "group": "A-SOUL",
-      "fan_name": "贝极星",
-      "color": "#DB7D74",
-      "replay_series_id": 222938,
+      "up_name": "又一",
+      "uid": 1217754423,
+      "official_name": "又一充电中",
+      "group": "四禧丸子",
+      "fan_name": "酥酥又",
+      "color": "#E3BA09",
+      "replay_series_id": 1975929,
       "replay_series_name": "直播回放",
-      "aliases": ["贝拉", "拉姐", "贝拉kira", "Bella", "小贝拉"]
+      "aliases": ["又一", "又一充电中", "又神", "王又一"]
     },
     {
-      "up_name": "乃琳",
-      "uid": 672342685,
-      "official_name": "乃琳Queen",
-      "group": "A-SOUL",
-      "fan_name": "奶淇琳",
-      "color": "#576690",
-      "replay_series_id": 222754,
+      "up_name": "恬豆",
+      "uid": 1660392980,
+      "official_name": "恬豆发芽了",
+      "group": "四禧丸子",
+      "fan_name": "恬豆包",
+      "color": "#A7C9D3",
+      "replay_series_id": 1961996,
       "replay_series_name": "直播回放",
-      "aliases": ["乃琳", "乃宝", "乃琳Queen", "Eileen", "琳琳", "奶琳"]
+      "aliases": ["恬豆", "恬豆发芽了", "陈恬豆", "唐豆人", "月之女神", "虚拟霍金", "答辩头"]
     },
     {
-      "up_name": "向晚",
-      "uid": 672346917,
-      "official_name": "向晚大魔王",
-      "group": "A-SOUL",
-      "fan_name": "顶碗人",
-      "color": "#9AC8E2",
-      "replay_series_id": 222748,
+      "up_name": "梨安",
+      "uid": 1900141897,
+      "official_name": "梨安不迷路",
+      "group": "四禧丸子",
+      "fan_name": "向心梨",
+      "color": "#E38691",
+      "replay_series_id": 2001839,
       "replay_series_name": "直播回放",
-      "aliases": ["向晚", "晚晚", "向晚大魔王", "Ava", "小向晚", "晚比"]
-    },
-    {
-      "up_name": "心宜",
-      "uid": 3537115310721181,
-      "official_name": "心宜不是心仪",
-      "group": "枝江",
-      "fan_name": "心球仪",
-      "color": "#C93773",
-      "replay_series_id": 3698069,
-      "replay_series_name": "直播回放",
-      "aliases": ["心宜", "心宜不是心仪", "小宜", "宜宝"]
-    },
-    {
-      "up_name": "思诺",
-      "uid": 3537115310721781,
-      "official_name": "思诺snow",
-      "group": "枝江",
-      "fan_name": "小海诺",
-      "color": "#7252C0",
-      "replay_series_id": 3692011,
-      "replay_series_name": "直播回放",
-      "aliases": ["思诺", "思诺snow", "Snow", "小诺"]
+      "aliases": ["梨安", "梨安不迷路", "肥梨", "灶神", "大梨老师"]
     }
   ],
   "extra_replay_sources": [
     {
-      "note": "如果后续需要从官方号或录播组账号抓回放，可在此添加 UID 与 series_id/season_id",
+      "note": "如果后续需要从官方号、团号或录播组账号抓回放，可在此添加 UID 与 series_id/season_id",
       "enabled": false,
-      "uid": 703007996,
-      "label": "A-SOUL_Official"
+      "uid": 0,
+      "label": "四禧丸子官方/录播组预留"
     }
   ]
 }

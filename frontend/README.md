@@ -15,7 +15,7 @@ uvicorn backend.app:public_app --host 0.0.0.0 --port 8000
 | 方法 | 路径 | 用途 |
 | :--- | :--- | :--- |
 | `GET` | `/api/v1/health` | 健康检查 |
-| `GET` | `/api/v1/members` | 获取 6 位成员列表与 `scene_types` 枚举（渲染前端筛选器） |
+| `GET` | `/api/v1/members` | 获取 4 位成员列表与 `scene_types` 枚举（渲染前端筛选器） |
 | `GET` | `/api/v1/stats` | 展示首页语料规模统计（总场次、总字幕条数、成员分布） |
 | `GET` | `/api/v1/search` | 核心全文检索（`q`, `up_name`, `date_from`, `date_to`, `scene_type`, `bvid`, `context_lines`, `sort`, `limit`, `offset`） |
 | `GET` | `/api/v1/videos` | 分页浏览已入库的直播回放列表 |

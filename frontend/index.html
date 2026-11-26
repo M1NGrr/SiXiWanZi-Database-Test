@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="枝江直播回放 AI 字幕语料库检索：覆盖嘉然、贝拉、乃琳、向晚、心宜、思诺近 6 年直播回放，面向二创剪辑的毫秒级台词与热梗检索工具。" />
-  <title>枝江字幕检索 · 直播回放台词与热梗语料库</title>
-  <link rel="stylesheet" href="./styles.css?v=20261126" />
+  <meta name="description" content="四禧丸子直播语料库检索：覆盖沐霂、又一、恬豆、梨安直播回放 AI 字幕，面向二创剪辑与粉丝的毫秒级台词与热梗检索工具。" />
+  <title>四禧丸子直播语料库 · 直播回放台词与热梗检索</title>
+  <link rel="stylesheet" href="./styles.css?v=20261127" />
 </head>
 <body>
   <div class="spectrum-bar" aria-hidden="true"></div>
@@ -14,21 +14,19 @@
     <div class="header-inner">
       <div class="brand" id="brandHome" role="button" tabindex="0" title="返回首页总览">
         <div class="brand-mark" aria-hidden="true">
-          <span style="background:var(--c-jiaran)"></span>
-          <span style="background:var(--c-beila)"></span>
-          <span style="background:var(--c-nailin)"></span>
-          <span style="background:var(--c-xiangwan)"></span>
-          <span style="background:var(--c-xinyi)"></span>
-          <span style="background:var(--c-sinuo)"></span>
+          <span style="background:var(--c-mumu)"></span>
+          <span style="background:var(--c-youyi)"></span>
+          <span style="background:var(--c-tiandou)"></span>
+          <span style="background:var(--c-lian)"></span>
         </div>
         <div>
-          <h1 class="brand-title">枝江字幕检索</h1>
-          <span class="brand-sub">嘉然 · 贝拉 · 乃琳 · 向晚 · 心宜 · 思诺 直播回放语料库</span>
+          <h1 class="brand-title">四禧丸子直播语料库</h1>
+          <span class="brand-sub">沐霂 · 又一 · 恬豆 · 梨安 直播回放 AI 字幕检索</span>
         </div>
       </div>
 
       <nav class="header-nav" aria-label="站点导航">
-        <button type="button" class="nav-btn" id="aboutBtn">关于与作者</button>
+        <button type="button" class="nav-btn" id="aboutBtn">关于与致谢</button>
       </nav>
     </div>
   </header>
@@ -48,7 +46,7 @@
             class="search-input"
             type="text"
             autocomplete="off"
-            placeholder="搜台词、搜热梗、搜名场面… 如：小作文 / 嘉心糖 / 心球仪 / 黑魔法学院（空格分隔多词）"
+            placeholder="搜台词、搜热梗、搜名场面… 如：黑话 / 爆 / 羞死了 / 四禧丸子（空格分隔多词）"
           />
           <button type="button" id="clearInputBtn" class="clear-btn hidden" aria-label="清空输入">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -108,7 +106,7 @@
           </select>
         </label>
 
-        <label class="fuzzy-check" title="自动同时匹配同音字与常见别称，例如搜 小海诺 同时命中 小海螺/小螺">
+        <label class="fuzzy-check" title="自动同时匹配同音字与常见别称，例如搜 四禧丸子 同时命中 四喜丸子，搜 小沐标 同时命中 小目标">
           <input id="fuzzyToggle" type="checkbox" checked />
           <span>同音/别称模糊扩展</span>
         </label>
@@ -130,7 +128,7 @@
       </div>
 
       <div class="notice-banner" role="note">
-        <strong>检索提示：</strong>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与实际发言人不对应。
+        <strong>检索提示：</strong>请核对直播形式，电影回、团播、电台回或连麦联动等可能会因为 BGM 人声 / 多人发言而导致字幕与实际发言人不对应。
       </div>
 
       <div class="stats-strip">
@@ -184,45 +182,52 @@
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <div>枝江直播回放字幕语料库 · 面向二创剪辑的公益检索工具</div>
+      <div>四禧丸子直播语料库 · 基于 <a id="footerUpstreamLink" href="https://github.com/RicojrH/zhijiang-database" target="_blank" rel="noopener noreferrer">zhijiang-database</a>（原作者 @没品人类之一）改造</div>
       <div class="footer-links">
-        <span>作者 B 站：<a id="footerAuthorLink" href="https://space.bilibili.com/396896138" target="_blank" rel="noopener noreferrer">@没品人类之一</a></span>
-        <a id="footerGithubLink" class="hidden" href="#" target="_blank" rel="noopener noreferrer">GitHub 开源项目</a>
-        <a href="#" id="footerAboutBtn">关于与声明</a>
+        <span>维护者：<a id="footerAuthorLink" href="https://github.com/M1NGrr" target="_blank" rel="noopener noreferrer">M1NG</a></span>
+        <a id="footerGithubLink" href="https://github.com/M1NGrr/SiXiWanZi-Database-Test" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+        <a href="#" id="footerAboutBtn">关于与致谢</a>
       </div>
     </div>
   </footer>
 
-  <!-- 作者与开源项目弹窗 -->
+  <!-- 作者与开源致谢弹窗 -->
   <div class="modal-backdrop hidden" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-card">
       <div class="modal-head">
-        <h3 id="modalTitle">关于枝江字幕检索与作者</h3>
+        <h3 id="modalTitle">关于四禧丸子直播语料库与致谢</h3>
         <button type="button" class="nav-btn" id="closeModalBtn">关闭</button>
       </div>
       <div class="info-list">
         <div class="info-row">
-          <span>项目作者</span>
-          <a id="modalAuthorLink" href="https://space.bilibili.com/396896138" target="_blank" rel="noopener noreferrer">B站 @没品人类之一</a>
+          <span>本站维护者</span>
+          <a id="modalAuthorLink" href="https://github.com/M1NGrr" target="_blank" rel="noopener noreferrer">M1NG</a>
         </div>
         <div class="info-row">
-          <span>GitHub 项目</span>
-          <a id="modalGithubLink" href="#" target="_blank" rel="noopener noreferrer">待配置</a>
+          <span>本站 GitHub 仓库</span>
+          <a id="modalGithubLink" href="https://github.com/M1NGrr/SiXiWanZi-Database-Test" target="_blank" rel="noopener noreferrer">https://github.com/M1NGrr/SiXiWanZi-Database-Test</a>
+        </div>
+        <div class="info-row">
+          <span>上游开源项目（MIT）</span>
+          <a id="modalUpstreamRepoLink" href="https://github.com/RicojrH/zhijiang-database" target="_blank" rel="noopener noreferrer">RicojrH/zhijiang-database</a>
+        </div>
+        <div class="info-row">
+          <span>上游原作者</span>
+          <a id="modalUpstreamAuthorLink" href="https://space.bilibili.com/396896138" target="_blank" rel="noopener noreferrer">B站 @没品人类之一</a>
         </div>
       </div>
       <p class="modal-note">
-        本项目由 <strong>@没品人类之一</strong> 搭建，面向二创剪辑师与粉丝提供直播回放台词与名场面快速检索。
-        字幕数据定期更新（主要看我什么时候有时间更新，一般不会超过三天）。
-        如果你在使用过程中发现识别错词、功能 Bug、场景标签误差，或有新的热梗词条与功能建议，<strong>非常欢迎通过 B 站私信 / 评论或 GitHub Issue 反馈交流！</strong>
+        本站点面向四禧丸子（沐霂、又一、恬豆、梨安）二创剪辑师与粉丝，提供直播回放台词与热梗的快速检索。
+        核心检索架构、数据管道与前后端代码基于开源项目 <strong>zhijiang-database</strong>（MIT License，原作者 B 站 <strong>@没品人类之一</strong>）改造搭建。
       </p>
       <p class="modal-note" style="margin-top:10px;">
-        程序源码、纠错词表与前后端架构均已开源（2 GB 级完整 SQLite 语料文件体量较大，托管于云端只读接口，不包含在 Git 代码仓库内）。
-        所有字幕来自 B 站公开直播回放自带 AI 字幕与本地语音识别补录，点击链接直达 B 站原视频，版权归原作者及对应版权方所有。
+        所有字幕来自 B 站公开直播回放自带 AI 字幕与本地语音识别补录，点击链接直达 B 站原视频，版权归原主播及对应版权方所有。
+        如发现错词、标签误差或功能建议，欢迎在 GitHub Issues 反馈。
       </p>
     </div>
   </div>
 
-  <script src="./config.js?v=20261126"></script>
-  <script src="./app.js?v=20261126"></script>
+  <script src="./config.js?v=20261127"></script>
+  <script src="./app.js?v=20261127"></script>
 </body>
 </html>

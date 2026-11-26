@@ -94,23 +94,21 @@ def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
 
     # 1. 首次写入 demo 数据 + 重复写入验证去重
     first = seed_demo_data(db)
-    assert first["videos"] == 6
-    assert first["lines_inserted"] > 20
+    assert first["videos"] == 4
+    assert first["lines_inserted"] >= 20
     assert first["lines_duplicate"] == 0
 
     second = seed_demo_data(db)
     assert second["lines_inserted"] == 0
     assert second["lines_duplicate"] == first["lines_inserted"]
 
-    # 2. 轻量场景初筛（验证标题无法区分的贝拉+向晚双播也能被字幕识别！）
+    # 2. 轻量场景初筛（验证标题无法区分的又一+恬豆双播也能被字幕识别！）
     tagged = run_scene_tagging(db, cfg, dry_run=False)
     by_bvid = {r.bvid: r for r in tagged}
-    assert by_bvid["BV1DEMO000001"].new_scene_type == "solo"     # 嘉然单播
-    assert by_bvid["BV1DEMO000002"].new_scene_type == "duo"      # 贝拉+向晚（纯靠字幕识别）
-    assert by_bvid["BV1DEMO000003"].new_scene_type == "group"    # 乃琳团播
-    assert by_bvid["BV1DEMO000004"].new_scene_type == "solo"     # 向晚单播
-    assert by_bvid["BV1DEMO000005"].new_scene_type == "duo"      # 心宜+思诺小心思
-    assert by_bvid["BV1DEMO000006"].new_scene_type == "special"  # 思诺生日会
+    assert by_bvid["BV1DEMO000001"].new_scene_type == "solo"     # 沐霂单播
+    assert by_bvid["BV1DEMO000002"].new_scene_type == "duo"      # 又一+恬豆（纯靠字幕识别）
+    assert by_bvid["BV1DEMO000003"].new_scene_type == "group"    # 恬豆团播
+    assert by_bvid["BV1DEMO000004"].new_scene_type == "special"  # 梨安生日会
 
     # 3. 人工锁定后再次初筛不会被覆盖
     db.update_scene_type("BV1DEMO000002", 1, "group", reason="人工复核", lock=True)
@@ -122,32 +120,32 @@ def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
     # 4. 中文 1字 / 2字 / 长短语 / 英文 / 多关键词 / 过滤 / 分页 / 上下文检索
     svc = SearchService(db)
 
-    # 3字短语 + 跨 UP 命中
-    r_essay = svc.search(SearchQuery(q="小作文"))
-    assert r_essay["pagination"]["total"] == 5
+    # 2字热词 + 跨 UP 命中
+    r_heihua = svc.search(SearchQuery(q="黑话"))
+    assert r_heihua["pagination"]["total"] == 4
 
-    # 2字中文精确检索 + UP 过滤
-    r_po = svc.search(SearchQuery(q="破防", up_names=["向晚"]))
-    assert r_po["pagination"]["total"] == 1
-    assert r_po["items"][0]["bvid"] == "BV1DEMO000004"
+    # 3字中文精确检索 + UP 过滤
+    r_xiu = svc.search(SearchQuery(q="羞死了", up_names=["梨安"]))
+    assert r_xiu["pagination"]["total"] == 1
+    assert r_xiu["items"][0]["bvid"] == "BV1DEMO000004"
 
     # 1字中文检索
-    r_one = svc.search(SearchQuery(q="笑", limit=3, offset=0))
+    r_one = svc.search(SearchQuery(q="笑", limit=2, offset=0))
     assert r_one["pagination"]["total"] >= 3
-    assert len(r_one["items"]) == 3
+    assert len(r_one["items"]) == 2
     assert r_one["pagination"]["has_more"] is True
 
     # 英文混排检索
-    r_en = svc.search(SearchQuery(q="A-SOUL"))
+    r_en = svc.search(SearchQuery(q="MUMU", fuzzy=False))
     assert r_en["pagination"]["total"] == 1
-    assert r_en["items"][0]["up_name"] == "乃琳"
+    assert r_en["items"][0]["up_name"] == "恬豆"
 
     # 多词 AND + 日期过滤 + scene_type 过滤 + 上下文
     r_multi = svc.search(
         SearchQuery(
-            q="卧底 然然",
-            date_from="2024-08-01",
-            date_to="2024-08-31",
+            q="卧底 大梨老师",
+            date_from="2025-08-01",
+            date_to="2025-08-31",
             scene_types=["group"],
             context_lines=1,
         )
@@ -159,9 +157,9 @@ def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
 
     # 软隐藏 is_visible = 0 默认不可见，include_hidden=True 可见
     db.update_visibility("BV1DEMO000004", 1, 0)
-    assert svc.search(SearchQuery(q="破防", up_names=["向晚"]))["pagination"]["total"] == 0
+    assert svc.search(SearchQuery(q="羞死了", up_names=["梨安"]))["pagination"]["total"] == 0
     assert (
-        svc.search(SearchQuery(q="破防", up_names=["向晚"], include_hidden=True))[
+        svc.search(SearchQuery(q="羞死了", up_names=["梨安"], include_hidden=True))[
             "pagination"
         ]["total"]
         == 1
@@ -204,7 +202,7 @@ def test_local_import_and_mocked_bvid_incremental_ingest(tmp_path: Path) -> None
     ins, dup = ingest_local_file(
         db,
         bcc_path,
-        up_name="嘉然",
+        up_name="沐霂",
         bvid="BV1LOCAL00001",
         page=1,
         pub_date="2025-02-01",
@@ -222,8 +220,8 @@ def test_local_import_and_mocked_bvid_incremental_ingest(tmp_path: Path) -> None
                 aid=99999,
                 title="【直播回放】模拟抓取测试",
                 desc="测试简介",
-                up_uid=672328094,
-                raw_up_name="嘉然今天吃什么",
+                up_uid=1878154667,
+                raw_up_name="沐霂是MUMU呀",
                 pub_ts=1739500000,
                 pub_date="2025-02-14",
                 duration_sec=3600,
@@ -303,17 +301,17 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
 
     st = pub_client.get("/api/v1/stats").json()
     assert "db_path" not in st  # 公网统计不暴露服务器本地磁盘路径
-    assert st["video_parts_total"] == 6
-    assert st["subtitles_total"] > 20
+    assert st["video_parts_total"] == 4
+    assert st["subtitles_total"] >= 20
     assert st["latest_video"] is not None
     assert st["latest_video"]["bvid"].startswith("BV1")
     assert st["latest_video"]["video_url"].startswith("https://www.bilibili.com/video/")
     assert isinstance(st["announcements"], list)
     ann_res = pub_client.get("/api/v1/announcements")
     assert ann_res.status_code == 200
-    assert any("ASR" in item["content"] for item in ann_res.json()["items"])
+    assert any("四禧丸子" in item["content"] for item in ann_res.json()["items"])
 
-    sr = pub_client.get("/api/v1/search", params={"q": "小作文", "up_name": "嘉然,向晚"}).json()
+    sr = pub_client.get("/api/v1/search", params={"q": "黑话", "up_name": "沐霂,梨安"}).json()
     assert sr["pagination"]["total"] == 2
     # 校验规范化的 B 站空降 URL（带尾部斜杠、单 P 不带冗余 p=1）
     first_item = sr["items"][0]
@@ -331,7 +329,7 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
     )
     assert patch.status_code == 200
 
-    sr2 = loc_client.get("/api/v1/search", params={"q": "小作文", "scene_type": "special"}).json()
+    sr2 = loc_client.get("/api/v1/search", params={"q": "黑话", "scene_type": "special"}).json()
     assert any(it["bvid"] == "BV1DEMO000001" for it in sr2["items"])
 
     hit_id = sr["items"][0]["id"]
@@ -489,31 +487,19 @@ def test_asr_backfill_helpers(tmp_path: Path) -> None:
 
 
 def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
-    # 1. Tier 1 & Tier 2 纠错与排除保护校验
-    assert apply_domain_corrections("欢迎 a sou 和佳然、欣怡、奶麒麟、顶晚人、星球仪！") == (
-        "欢迎 A-SOUL 和嘉然、心宜、奶淇琳、顶碗人、心球仪！"
+    # 1. Tier 1 & Tier 2 纠错与保护校验
+    assert apply_domain_corrections("欢迎沐沐、田豆、黎安、苏苏又、田豆包和王有一！") == (
+        "欢迎沐霂、恬豆、梨安、酥酥又、恬豆包和王又一！"
     )
-    # 保留 小海螺 / 小螺，排除 斯诺克 / 家乐福 / 不是心仪 / 心仪的 / 一心一意 / 小心一点
-    assert apply_domain_corrections("欢迎小海螺和小螺，我喜欢打斯诺克，也喜欢斯诺！") == (
-        "欢迎小海螺和小螺，我喜欢打斯诺克，也喜欢思诺！"
+    # 保留 甜豆 / 李安 / 沐霖 / 小目标 / 向心力 等可能含日常语境或梗的原文
+    assert apply_domain_corrections("今天先定个小目标，吃甜豆，看李安电影，再看李安不迷路直播！") == (
+        "今天先定个小目标，吃甜豆，看李安电影，再看梨安不迷路直播！"
     )
-    assert apply_domain_corrections("心宜不是心仪，送你心仪的礼物，欢迎心仪公主") == (
-        "心宜不是心仪，送你心仪的礼物，欢迎心宜公主"
-    )
-    assert apply_domain_corrections("一心一意小心一点，乃零三分，陪诺零点庆生") == (
-        "一心一意小心一点，乃0三分，陪诺零点庆生"
-    )
-    assert apply_domain_corrections("去家乐福买东西，还有家乐", up_name="嘉然", pub_date="2022-03-01") == "去家乐福买东西，还有珈乐"
-    assert apply_domain_corrections("去农家乐，参加乐队比赛，大家乐意", up_name="嘉然", pub_date="2022-03-01") == "去农家乐，参加乐队比赛，大家乐意"
-    assert apply_domain_corrections("2022年5月10日后不再替换嘉乐和家乐", up_name="乃琳", pub_date="2022-05-11") == "2022年5月10日后不再替换嘉乐和家乐"
-    assert apply_domain_corrections("思诺去农家乐参加乐队", up_name="思诺", pub_date="2026-10-15") == "思诺去农家乐参加乐队"
-    assert apply_domain_corrections("我是一宝", up_name="心宜") == "我是宜宝"
-    assert apply_domain_corrections("我是一宝", up_name="嘉然") == "我是一宝"
 
     # 2. 同音模糊查询表达式校验
-    expr, expanded = build_fuzzy_fts_query("小海诺", fuzzy=True)
-    assert '"小 海 诺"' in expr and '"小 海 螺"' in expr and '"小 螺"' in expr
-    assert "小海诺" in expanded
+    expr, expanded = build_fuzzy_fts_query("四禧丸子", fuzzy=True)
+    assert '"四 禧 丸 子"' in expr and '"四 喜 丸 子"' in expr
+    assert "四禧丸子" in expanded
 
     # 3. 存量批量修复 + 模糊搜索端到端校验
     db_file = tmp_path / "norm.db"
@@ -522,10 +508,10 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     from zhijiang_corpus.db import SubtitleRow, VideoRecord
 
     db.save_video_and_subtitles(
-        VideoRecord(bvid="BV1NORM00001", page=1, up_name="心宜", pub_date="2026-01-01", subtitle_status="ok"),
+        VideoRecord(bvid="BV1NORM00001", page=1, up_name="沐霂", pub_date="2026-01-01", subtitle_status="ok"),
         [
-            SubtitleRow(up_name="心宜", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=1.0, end_sec=3.0, content="欣怡和斯诺欢迎奶麒麟和小海螺"),
-            SubtitleRow(up_name="心宜", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=4.0, end_sec=6.0, content="心宜不是心仪哦"),
+            SubtitleRow(up_name="沐霂", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=1.0, end_sec=3.0, content="沐沐和田豆欢迎苏苏又和小目标"),
+            SubtitleRow(up_name="沐霂", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=4.0, end_sec=6.0, content="今天聊聊四喜丸子的向心力"),
         ],
     )
     # 模拟历史遗留未清洗入库后执行批量修复
@@ -533,16 +519,19 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     assert res["updated"] == 1
 
     svc = SearchService(db)
-    # 搜 小海诺（模糊模式）能同时搜到保留原文的 小海螺！
-    r_fuzzy = svc.search(SearchQuery(q="小海诺", fuzzy=True))
+    # 搜 小沐标（模糊模式）能同时搜到保留原文的 小目标！
+    r_fuzzy = svc.search(SearchQuery(q="小沐标", fuzzy=True))
     assert r_fuzzy["pagination"]["total"] == 1
-    assert "小海螺" in r_fuzzy["items"][0]["content"]
+    assert "小目标" in r_fuzzy["items"][0]["content"]
+    # 搜 四禧丸子（模糊模式）能同时搜到 四喜丸子！
+    r_group = svc.search(SearchQuery(q="四禧丸子", fuzzy=True))
+    assert r_group["pagination"]["total"] == 1
     # 精确模式不扩展
-    r_exact = svc.search(SearchQuery(q="小海诺", fuzzy=False))
+    r_exact = svc.search(SearchQuery(q="小沐标", fuzzy=False))
     assert r_exact["pagination"]["total"] == 0
-    # 搜 思诺 能搜到被修复后的 斯诺 -> 思诺
-    r_sinuo = svc.search(SearchQuery(q="思诺", fuzzy=False))
-    assert r_sinuo["pagination"]["total"] == 1
+    # 搜 恬豆 能搜到被修复后的 田豆 -> 恬豆
+    r_td = svc.search(SearchQuery(q="恬豆", fuzzy=False))
+    assert r_td["pagination"]["total"] == 1
 
 
 def test_incremental_delta_sync_and_live_stats(tmp_path: Path) -> None:

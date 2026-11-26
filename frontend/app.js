@@ -5,12 +5,10 @@
   const API_BASE = (CFG.API_BASE || "").replace(/\/+$/, "");
 
   const MEMBER_THEMES = {
-    "嘉然": { color: "#E799B0", bg: "#FDF3F6", ink: "#9C3A5A", fan: "嘉心糖", official: "嘉然今天吃什么" },
-    "贝拉": { color: "#DB7D74", bg: "#FDF3F2", ink: "#A13A31", fan: "贝极星", official: "贝拉kira" },
-    "乃琳": { color: "#576690", bg: "#F1F3F8", ink: "#364369", fan: "奶淇琳", official: "乃琳Queen" },
-    "向晚": { color: "#9AC8E2", bg: "#F0F8FC", ink: "#225F80", fan: "顶碗人", official: "向晚大魔王" },
-    "心宜": { color: "#C93773", bg: "#FCEFF4", ink: "#9D2256", fan: "心球仪", official: "心宜不是心仪" },
-    "思诺": { color: "#7252C0", bg: "#F4F1FB", ink: "#513399", fan: "小海诺", official: "思诺snow" }
+    "沐霂": { color: "#A1D29A", bg: "#F2F9F1", ink: "#2E6A29", fan: "小沐标", official: "沐霂是MUMU呀" },
+    "又一": { color: "#E3BA09", bg: "#FDF9E6", ink: "#8A6A00", fan: "酥酥又", official: "又一充电中" },
+    "恬豆": { color: "#A7C9D3", bg: "#F1F7F9", ink: "#2C6475", fan: "恬豆包", official: "恬豆发芽了" },
+    "梨安": { color: "#E38691", bg: "#FDF2F4", ink: "#9E3342", fan: "向心梨", official: "梨安不迷路" }
   };
 
   const SCENE_LABELS = {
@@ -33,9 +31,12 @@
     members: [],
     stats: null,
     site: {
-      author_name: CFG.AUTHOR_NAME || "没品人类之一",
-      author_bilibili_url: CFG.AUTHOR_BILIBILI_URL || "https://space.bilibili.com/396896138",
-      github_url: CFG.GITHUB_REPO_URL || ""
+      author_name: CFG.AUTHOR_NAME || "M1NG",
+      author_home_url: CFG.AUTHOR_HOME_URL || CFG.AUTHOR_BILIBILI_URL || "",
+      github_url: CFG.GITHUB_REPO_URL || "https://github.com/M1NGrr/SiXiWanZi-Database-Test",
+      upstream_author_name: CFG.UPSTREAM_AUTHOR_NAME || "没品人类之一",
+      upstream_author_url: CFG.UPSTREAM_AUTHOR_URL || "https://space.bilibili.com/396896138",
+      upstream_repo_url: CFG.UPSTREAM_REPO_URL || "https://github.com/RicojrH/zhijiang-database"
     }
   };
 
@@ -53,10 +54,10 @@
 
   function getTheme(upName) {
     return MEMBER_THEMES[upName] || {
-      color: "#576690",
-      bg: "#F1F3F8",
-      ink: "#364369",
-      fan: "枝江",
+      color: "#4B6373",
+      bg: "#F1F4F6",
+      ink: "#2F4554",
+      fan: "四禧丸子",
       official: upName || ""
     };
   }
@@ -80,12 +81,14 @@
       const upStat = state.stats && state.stats.by_up
         ? state.stats.by_up.find((u) => u.up_name === upName)
         : null;
-      const countText = upStat ? ` ${Math.round(upStat.subtitle_lines / 10000)} 万+ 条` : "";
+      const countText = upStat && upStat.subtitle_lines >= 10000
+        ? ` ${Math.round(upStat.subtitle_lines / 10000)} 万+ 条`
+        : (upStat ? ` ${formatNumber(upStat.subtitle_lines)} 条` : "");
       input.placeholder = `在 ${upName} 的${countText}字幕中搜索台词、热梗或名场面…（空格分隔多词）`;
     } else if (ups.length > 1) {
       input.placeholder = `在 ${ups.join("、")} 的字幕中搜索台词、热梗或名场面…（空格分隔多词）`;
     } else {
-      input.placeholder = "搜台词、搜热梗、搜名场面… 如：小作文 / 嘉心糖 / 心球仪 / 黑魔法学院（空格分隔多词）";
+      input.placeholder = "搜台词、搜热梗、搜名场面… 如：黑话 / 爆 / 羞死了 / 四禧丸子（空格分隔多词）";
     }
   }
 
@@ -181,7 +184,7 @@
       } else {
         state.selectedUps.add(upName);
       }
-      const totalMembers = state.members.length || 6;
+      const totalMembers = state.members.length || Object.keys(MEMBER_THEMES).length;
       if (state.selectedUps.size >= totalMembers) {
         state.selectedUps.clear();
       }
@@ -616,14 +619,24 @@
   }
 
   function renderAuthorAndGithub() {
-    const author = state.site.author_name || "没品人类之一";
-    const biliUrl = state.site.author_bilibili_url || "https://space.bilibili.com/396896138";
+    const author = state.site.author_name || "M1NG";
+    const homeUrl = CFG.AUTHOR_HOME_URL || state.site.author_bilibili_url || state.site.author_home_url || "";
     const ghUrl = CFG.GITHUB_REPO_URL || state.site.github_url || "";
+    const upAuthor = state.site.upstream_author_name || "没品人类之一";
+    const upAuthorUrl = state.site.upstream_author_url || "https://space.bilibili.com/396896138";
+    const upRepoUrl = state.site.upstream_repo_url || "https://github.com/RicojrH/zhijiang-database";
 
-    $("footerAuthorLink").textContent = `@${author}`;
-    $("footerAuthorLink").href = biliUrl;
-    $("modalAuthorLink").textContent = `B站 @${author}`;
-    $("modalAuthorLink").href = biliUrl;
+    const footerAuthor = $("footerAuthorLink");
+    const modalAuthor = $("modalAuthorLink");
+    footerAuthor.textContent = author;
+    modalAuthor.textContent = author;
+    if (homeUrl) {
+      footerAuthor.href = homeUrl;
+      modalAuthor.href = homeUrl;
+    } else {
+      footerAuthor.removeAttribute("href");
+      modalAuthor.removeAttribute("href");
+    }
 
     const footerGh = $("footerGithubLink");
     const modalGh = $("modalGithubLink");
@@ -636,6 +649,16 @@
       footerGh.classList.add("hidden");
       modalGh.removeAttribute("href");
       modalGh.textContent = "仓库创建后可在 frontend/config.js 填入 GitHub 链接";
+    }
+
+    const footerUp = $("footerUpstreamLink");
+    if (footerUp) footerUp.href = upRepoUrl;
+    const modalUpRepo = $("modalUpstreamRepoLink");
+    if (modalUpRepo) modalUpRepo.href = upRepoUrl;
+    const modalUpAuthor = $("modalUpstreamAuthorLink");
+    if (modalUpAuthor) {
+      modalUpAuthor.textContent = `B站 @${upAuthor}`;
+      modalUpAuthor.href = upAuthorUrl;
     }
   }
 

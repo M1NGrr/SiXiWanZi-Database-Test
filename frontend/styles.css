@@ -1,5 +1,5 @@
 :root {
-  /* 枝江暖瓷白编排基底 */
+  /* 暖瓷白编排基底 */
   --bg: #f8f7f4;
   --surface: #ffffff;
   --surface-subtle: #f2f0ec;
@@ -9,35 +9,27 @@
   --ink-secondary: #535c6e;
   --ink-muted: #828a9c;
 
-  /* 6 位成员官方应援色与无障碍可读文字配对 */
-  --c-jiaran: #e799b0;
-  --c-jiaran-bg: #fdf3f6;
-  --c-jiaran-ink: #9c3a5a;
+  /* 4 位成员官方应援色与无障碍可读文字配对 */
+  --c-mumu: #a1d29a;
+  --c-mumu-bg: #f2f9f1;
+  --c-mumu-ink: #2e6a29;
 
-  --c-beila: #db7d74;
-  --c-beila-bg: #fdf3f2;
-  --c-beila-ink: #a13a31;
+  --c-youyi: #e3ba09;
+  --c-youyi-bg: #fdf9e6;
+  --c-youyi-ink: #8a6a00;
 
-  --c-nailin: #576690;
-  --c-nailin-bg: #f1f3f8;
-  --c-nailin-ink: #364369;
+  --c-tiandou: #a7c9d3;
+  --c-tiandou-bg: #f1f7f9;
+  --c-tiandou-ink: #2c6475;
 
-  --c-xiangwan: #9ac8e2;
-  --c-xiangwan-bg: #f0f8fc;
-  --c-xiangwan-ink: #225f80;
+  --c-lian: #e38691;
+  --c-lian-bg: #fdf2f4;
+  --c-lian-ink: #9e3342;
 
-  --c-xinyi: #c93773;
-  --c-xinyi-bg: #fceff4;
-  --c-xinyi-ink: #9d2256;
-
-  --c-sinuo: #7252c0;
-  --c-sinuo-bg: #f4f1fb;
-  --c-sinuo-ink: #513399;
-
-  /* 动态当前主题强调色（默认枝江靛蓝，选中成员后平滑切换为其应援色） */
-  --accent: #576690;
-  --accent-bg: #f1f3f8;
-  --accent-ink: #364369;
+  /* 动态当前主题强调色（默认石板青，选中单个成员后平滑切换为其应援色） */
+  --accent: #4b6373;
+  --accent-bg: #f1f4f6;
+  --accent-ink: #2f4554;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -70,24 +62,20 @@ body {
   flex-direction: column;
 }
 
-/* 顶部 3px 枝江六色光谱识别线 */
+/* 顶部 3px 四禧丸子四色光谱识别线 */
 .spectrum-bar {
   height: 3px;
   width: 100%;
   background: linear-gradient(
     90deg,
-    var(--c-jiaran) 0%,
-    var(--c-jiaran) 16.6%,
-    var(--c-beila) 16.6%,
-    var(--c-beila) 33.3%,
-    var(--c-nailin) 33.3%,
-    var(--c-nailin) 50%,
-    var(--c-xiangwan) 50%,
-    var(--c-xiangwan) 66.6%,
-    var(--c-xinyi) 66.6%,
-    var(--c-xinyi) 83.3%,
-    var(--c-sinuo) 83.3%,
-    var(--c-sinuo) 100%
+    var(--c-mumu) 0%,
+    var(--c-mumu) 25%,
+    var(--c-youyi) 25%,
+    var(--c-youyi) 50%,
+    var(--c-tiandou) 50%,
+    var(--c-tiandou) 75%,
+    var(--c-lian) 75%,
+    var(--c-lian) 100%
   );
   position: sticky;
   top: 0;
@@ -125,7 +113,7 @@ body {
 
 .brand-mark {
   display: grid;
-  grid-template-columns: repeat(3, 7px);
+  grid-template-columns: repeat(2, 8px);
   gap: 3px;
   padding: 6px;
   background: var(--surface-subtle);
@@ -134,8 +122,8 @@ body {
 }
 
 .brand-mark span {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   display: block;
 }
@@ -740,7 +728,7 @@ body {
 
 .member-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1026,7 +1014,7 @@ body {
 }
 
 mark {
-  background: color-mix(in srgb, var(--m-color, #e799b0) 28%, #fff6c2);
+  background: color-mix(in srgb, var(--m-color, #a1d29a) 28%, #fff6c2);
   color: var(--ink);
   padding: 1px 3px;
   border-radius: 4px;

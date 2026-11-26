@@ -77,11 +77,14 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             ],
             "scene_types": list(VALID_SCENE_TYPES),
             "site": {
-                "author_name": os.getenv("ZJ_AUTHOR_NAME", "没品人类之一"),
-                "author_bilibili_url": os.getenv(
-                    "ZJ_AUTHOR_BILI_URL", "https://space.bilibili.com/396896138"
+                "author_name": os.getenv("ZJ_AUTHOR_NAME", "M1NG"),
+                "author_bilibili_url": os.getenv("ZJ_AUTHOR_BILI_URL", ""),
+                "github_url": os.getenv(
+                    "ZJ_GITHUB_URL", "https://github.com/M1NGrr/SiXiWanZi-Database-Test"
                 ),
-                "github_url": os.getenv("ZJ_GITHUB_URL", ""),
+                "upstream_author_name": "没品人类之一",
+                "upstream_author_url": "https://space.bilibili.com/396896138",
+                "upstream_repo_url": "https://github.com/RicojrH/zhijiang-database",
             },
         }
 
@@ -114,7 +117,7 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
     def search(
         q: str = Query(default="", description="检索关键词（空格分隔多词 AND）"),
         up_name: Optional[str] = Query(
-            default=None, description="UP 主简称过滤，支持逗号分隔多个，如 嘉然,向晚"
+            default=None, description="UP 主简称过滤，支持逗号分隔多个，如 沐霂,恬豆"
         ),
         date_from: Optional[str] = Query(default=None, description="起始日期 YYYY-MM-DD"),
         date_to: Optional[str] = Query(default=None, description="截止日期 YYYY-MM-DD"),
@@ -125,7 +128,7 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
         context_lines: int = Query(default=0, ge=0, le=10, description="附带前后上下文字幕条数"),
         fuzzy: bool = Query(
             default=True,
-            description="开启同音/别称/Tier 3 歧义词模糊扩展（如搜 心宜 同时命中 心仪，搜 小海诺 同时命中 小海螺）",
+            description="开启同音/别称/Tier 3 歧义词模糊扩展（如搜 四禧丸子 同时命中 四喜丸子，搜 小沐标 同时命中 小目标）",
         ),
         sort: str = Query(default="date_desc", pattern="^(date_desc|date_asc|relevance)$"),
         limit: int = Query(default=20, ge=1, le=200),

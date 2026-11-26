@@ -55,10 +55,10 @@ def create_app(
     db.init_db()
 
     app = FastAPI(
-        title="枝江直播回放 AI 字幕语料库 - Backend API",
+        title="四禧丸子直播语料库 - Backend API",
         version="0.3.0",
         description=(
-            "前后端分离架构后端服务。"
+            "前后端分离架构后端服务（基于 RicojrH/zhijiang-database 改造）。"
             "公网部署时请使用 public_app（仅暴露 /api/v1/* 只读检索接口）；"
             "本地数据入库运维时启用 admin 路由（/api/v1/admin/*）与 /debug 调试台。"
         ),
