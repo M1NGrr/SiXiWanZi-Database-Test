@@ -122,10 +122,10 @@ def ingest_bvids(
                         )
                         db.log_ingest(run_id, vinfo.bvid, p.page, "skipped", "already ok")
                         continue
-                    if st == "no_subtitle" and not retry_no_sub:
+                    if st in ("no_subtitle", "asr_empty") and not retry_no_sub:
                         summary.parts_skipped += 1
                         db.log_ingest(
-                            run_id, vinfo.bvid, p.page, "skipped", "previously no_subtitle"
+                            run_id, vinfo.bvid, p.page, "skipped", f"previously {st}"
                         )
                         continue
 

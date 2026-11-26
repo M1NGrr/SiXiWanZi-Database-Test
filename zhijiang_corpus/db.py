@@ -105,7 +105,7 @@ class CorpusDB:
 
     def is_bvid_completed(self, bvid: str, *, allow_no_subtitle: bool = True) -> bool:
         """判断某个 BV 号是否已完整入库（避免断点续抓时重复请求 /x/web-interface/view）."""
-        done_statuses = ("ok", "no_subtitle") if allow_no_subtitle else ("ok",)
+        done_statuses = ("ok", "no_subtitle", "asr_empty") if allow_no_subtitle else ("ok", "asr_empty")
         placeholders = ",".join("?" for _ in done_statuses)
         with self.session() as conn:
             row = conn.execute(
@@ -196,7 +196,11 @@ class CorpusDB:
                 pub_ts           = CASE WHEN excluded.pub_ts > 0 THEN excluded.pub_ts ELSE videos.pub_ts END,
                 duration_sec     = CASE WHEN excluded.duration_sec > 0 THEN excluded.duration_sec ELSE videos.duration_sec END,
                 subtitle_lan     = CASE WHEN excluded.subtitle_lan != '' THEN excluded.subtitle_lan ELSE videos.subtitle_lan END,
-                subtitle_status  = excluded.subtitle_status,
+                subtitle_status  = CASE
+                                       WHEN videos.subtitle_status = 'asr_empty' AND excluded.subtitle_status = 'no_subtitle'
+                                       THEN 'asr_empty'
+                                       ELSE excluded.subtitle_status
+                                   END,
                 line_count       = excluded.line_count,
                 -- 若已有非 unknown 的锁定场景标签，增量入库不破坏它
                 scene_type       = CASE

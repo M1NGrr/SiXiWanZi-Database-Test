@@ -261,6 +261,18 @@ def test_local_import_and_mocked_bvid_incremental_ingest(tmp_path: Path) -> None
     s2 = ingest_bvids(db, cfg, ["BV1MOCK000001"], client=fake)  # type: ignore[arg-type]
     assert s2.parts_skipped == 1
     assert s2.lines_inserted == 0
+
+    # 若无字幕分 P 已被 Whisper 判定为 asr_empty，后续增量抓取不得将其重置为 no_subtitle 或重复转录
+    with db.session() as conn:
+        conn.execute(
+            "UPDATE videos SET subtitle_status = 'asr_empty' WHERE bvid = 'BV1MOCK000001' AND page = 2"
+        )
+    assert db.is_bvid_completed("BV1MOCK000001", allow_no_subtitle=True) is True
+    assert db.is_bvid_completed("BV1MOCK000001", allow_no_subtitle=False) is True
+    s3 = ingest_bvids(db, cfg, ["BV1MOCK000001"], client=fake)  # type: ignore[arg-type]
+    assert s3.parts_skipped == 1
+    assert db.get_video("BV1MOCK000001", 2)["subtitle_status"] == "asr_empty"
+
     assert db.optimize_db()["status"] == "ok"
 
 
