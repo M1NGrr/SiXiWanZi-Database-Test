@@ -405,14 +405,20 @@ class CorpusDB:
 
     def get_stats(self) -> Dict[str, Any]:
         with self.session() as conn:
-            video_total = conn.execute("SELECT COUNT(*) FROM videos").fetchone()[0]
-            video_ok = conn.execute(
-                "SELECT COUNT(*) FROM videos WHERE subtitle_status = 'ok'"
-            ).fetchone()[0]
-            sub_total = conn.execute("SELECT COUNT(*) FROM subtitles").fetchone()[0]
-            sub_visible = conn.execute(
-                "SELECT COUNT(*) FROM subtitles WHERE is_visible = 1"
-            ).fetchone()[0]
+            # 全部聚合走轻量 videos 表（仅数千行，<3ms），避免在云端小内存机器上全表扫描 579 万行 subtitles
+            summary = conn.execute(
+                """
+                SELECT COUNT(*) AS video_total,
+                       COALESCE(SUM(CASE WHEN subtitle_status = 'ok' THEN 1 ELSE 0 END), 0) AS video_ok,
+                       COALESCE(SUM(line_count), 0) AS sub_total,
+                       COALESCE(SUM(CASE WHEN is_visible = 1 THEN line_count ELSE 0 END), 0) AS sub_visible
+                  FROM videos
+                """
+            ).fetchone()
+            video_total = int(summary["video_total"] or 0)
+            video_ok = int(summary["video_ok"] or 0)
+            sub_total = int(summary["sub_total"] or 0)
+            sub_visible = int(summary["sub_visible"] or 0)
 
             by_up = [
                 dict(r)

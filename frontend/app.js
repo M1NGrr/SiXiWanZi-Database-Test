@@ -610,6 +610,7 @@
   async function init() {
     renderMemberChips();
     renderSceneChips();
+    renderLandingStatsAndCards();
     renderAuthorAndGithub();
     applyThemeAccent();
 
