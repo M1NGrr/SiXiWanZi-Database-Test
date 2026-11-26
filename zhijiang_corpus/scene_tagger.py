@@ -96,6 +96,18 @@ STRONG_GROUP_SUB_CUES = (
 # 10 分钟时间桶（600 秒），用于判断跨成员称呼是否贯穿整场而非偶然提及
 TIME_BUCKET_SEC = 600.0
 
+# 针对易与日常中文短语冲突的成员简称，补充正则上下文保护（如避免“又一次/又一个/又一边/又一样”误判为成员“又一”）
+AMBIGUOUS_ALIAS_REGEX: Dict[str, str] = {
+    "又一": (
+        r"(?<![一这那哪每])又一"
+        r"(?![次个天年遍回轮波把局句首种些边面半步下点堆群套份件位条张只颗块声阵场度番层段节排行列组批样版起同直整大小新])"
+    ),
+}
+
+
+def _alias_to_regex_fragment(alias: str) -> str:
+    return AMBIGUOUS_ALIAS_REGEX.get(alias, re.escape(alias))
+
 
 @dataclass
 class SceneClassification:
@@ -122,14 +134,13 @@ def _find_members_in_text(
     *,
     exclude_up: Optional[str] = None,
 ) -> List[str]:
-    lowered = text.lower()
     found: List[str] = []
     for m in members:
         if exclude_up and m.up_name == exclude_up:
             continue
-        # 优先使用长度 >= 2 的正式名与别名，减少单字误判
+        # 优先使用长度 >= 2 的正式名与别名，并对易撞日常词的简称施加边界保护
         for alias in (m.up_name, m.official_name, *m.aliases):
-            if len(alias) >= 2 and alias.lower() in lowered:
+            if len(alias) >= 2 and re.search(_alias_to_regex_fragment(alias), text, re.IGNORECASE):
                 found.append(m.up_name)
                 break
     return found
@@ -196,7 +207,10 @@ def classify_video_scene(
             reverse=True,
         )
         if aliases:
-            pat = re.compile("|".join(re.escape(a) for a in aliases), re.IGNORECASE)
+            pat = re.compile(
+                "|".join(_alias_to_regex_fragment(a) for a in aliases),
+                re.IGNORECASE,
+            )
             member_patterns.append((m.up_name, pat))
 
     for start_sec, content in subtitles:

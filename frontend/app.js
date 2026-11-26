@@ -516,7 +516,6 @@
 
       $("hitList").innerHTML = data.items.map((it) => {
         const t = getTheme(it.up_name);
-        const sceneName = SCENE_LABELS[it.scene_type] || it.scene_type;
         return `
           <article class="hit-card" style="--m-color:${t.color};--m-bg:${t.bg};--m-ink:${t.ink};">
             <div class="hit-meta">
@@ -524,7 +523,6 @@
                 <span class="color-dot" style="background:${t.color};"></span>
                 ${esc(it.up_name)}
               </span>
-              <span class="badge badge-scene">${esc(sceneName)}</span>
               <span class="badge badge-time">${esc(it.start_hms)} ~ ${esc(it.end_hms)}</span>
               <span>${esc(it.pub_date)}</span>
               <span>${esc(it.bvid)} · P${it.page}</span>
@@ -708,9 +706,12 @@
     renderAuthorAndGithub();
     applyThemeAccent();
 
-    $("sceneStrip").querySelectorAll(".scene-chip").forEach((btn) => {
-      btn.addEventListener("click", () => toggleScene(btn.dataset.scene || ""));
-    });
+    const sceneStripEl = $("sceneStrip");
+    if (sceneStripEl) {
+      sceneStripEl.querySelectorAll(".scene-chip").forEach((btn) => {
+        btn.addEventListener("click", () => toggleScene(btn.dataset.scene || ""));
+      });
+    }
 
     $("searchForm").addEventListener("submit", (e) => {
       e.preventDefault();

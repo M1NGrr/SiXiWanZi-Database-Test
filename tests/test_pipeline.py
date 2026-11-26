@@ -488,20 +488,49 @@ def test_asr_backfill_helpers(tmp_path: Path) -> None:
 
 def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     # 1. Tier 1 & Tier 2 纠错与保护校验
-    assert apply_domain_corrections("欢迎沐沐、田豆、黎安、苏苏又、田豆包和王有一！") == (
-        "欢迎沐霂、恬豆、梨安、酥酥又、恬豆包和王又一！"
+    assert apply_domain_corrections("欢迎思西丸子、沐沐、田豆、黎安、苏苏又、甜豆包、向心离、肥狸、佑神和王幼仪！") == (
+        "欢迎四禧丸子、沐霂、恬豆、梨安、酥酥又、恬豆包、向心梨、肥梨、又神和王又一！"
     )
-    # 保留 甜豆 / 李安 / 沐霖 / 小目标 / 向心力 等可能含日常语境或梗的原文
-    assert apply_domain_corrections("今天先定个小目标，吃甜豆，看李安电影，再看李安不迷路直播！") == (
-        "今天先定个小目标，吃甜豆，看李安电影，再看梨安不迷路直播！"
+    # 排除 左右神经，替换 右神 -> 又神；保留 甜豆 / 李安 / 沐霖 / 小目标 / 向心力 等日常语境
+    assert apply_domain_corrections("左右神经没问题，右神厉害，先定个小目标，吃甜豆，看李安电影，再看李安不迷路直播！") == (
+        "左右神经没问题，又神厉害，先定个小目标，吃甜豆，看李安电影，再看梨安不迷路直播！"
     )
 
-    # 2. 同音模糊查询表达式校验
+    # 2. 场景打标：验证日常“又一次/又一个/又一边/又一样”不会误判为与“又一”双播
+    from zhijiang_corpus.scene_tagger import classify_video_scene
+
+    cfg = load_config(db_path=tmp_path / "tag_check.db")
+    solo_res = classify_video_scene(
+        {"bvid": "BV1SOLO00001", "page": 1, "up_name": "梨安", "title": "【直播回放】杂谈", "scene_type": "unknown"},
+        [
+            (10.0, "我又一次忘记保存了，真服了"),
+            (700.0, "怎么一个又一个接连出现啊"),
+            (1400.0, "又一边唱歌又一边画画，跟昨天又一样"),
+            (2100.0, "又一波敌人冲过来了"),
+        ],
+        cfg.members,
+    )
+    assert solo_res.new_scene_type == "solo"
+    assert "又一" not in solo_res.detected_members
+
+    duo_res = classify_video_scene(
+        {"bvid": "BV1DUO000001", "page": 1, "up_name": "梨安", "title": "【直播回放】杂谈", "scene_type": "unknown"},
+        [
+            (10.0, "又一你在哪儿呀快来连麦"),
+            (700.0, "哈哈哈哈又一太搞笑了"),
+            (1400.0, "王又一轮到你选歌啦"),
+        ],
+        cfg.members,
+    )
+    assert duo_res.new_scene_type == "duo"
+    assert "又一" in duo_res.detected_members
+
+    # 3. 同音模糊查询表达式校验
     expr, expanded = build_fuzzy_fts_query("四禧丸子", fuzzy=True)
     assert '"四 禧 丸 子"' in expr and '"四 喜 丸 子"' in expr
     assert "四禧丸子" in expanded
 
-    # 3. 存量批量修复 + 模糊搜索端到端校验
+    # 4. 存量批量修复 + 模糊搜索端到端校验
     db_file = tmp_path / "norm.db"
     db = CorpusDB(db_file)
     db.init_db()
