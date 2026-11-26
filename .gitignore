@@ -6,6 +6,8 @@ __pycache__/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+data/*.tar.gz
+data/*.gz
 data/*.json
 data/cache/
 data/tmp_asr/
