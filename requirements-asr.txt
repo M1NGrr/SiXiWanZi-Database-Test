@@ -1,0 +1,4 @@
+# 本地 GPU 语音转文字补录可选依赖（仅本地补录机器安装，云端检索后端无需安装）
+faster-whisper>=1.1.0
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

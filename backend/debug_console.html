@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>枝江字幕库 · 本地后端调试台</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --ok: #059669;
+      --ok-soft: #ecfdf5;
+      --warn: #d97706;
+      --warn-soft: #fffbeb;
+      --purple: #6d28d9;
+      --purple-soft: #f5f3ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
+    .header-inner {
+      max-width: 1180px; margin: 0 auto; padding: 14px 20px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand h1 { margin: 0; font-size: 18px; font-weight: 700; }
+    .brand span { font-size: 12px; color: var(--muted); }
+    .stat-pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+    .pill { padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #374151; font-weight: 500; }
+    .pill.ok { background: var(--ok-soft); color: var(--ok); }
+    .pill.warn { background: var(--warn-soft); color: var(--warn); cursor: pointer; }
+    .tabs { max-width: 1180px; margin: 0 auto; padding: 0 20px; display: flex; gap: 4px; }
+    .tab-btn {
+      background: transparent; border: none; border-bottom: 2px solid transparent;
+      padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .container { max-width: 1180px; margin: 18px auto 56px; padding: 0 20px; }
+    .panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .search-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+    .search-bar input[type="text"] {
+      flex: 1; min-width: 260px; padding: 11px 14px; font-size: 15px;
+      border: 1px solid #d1d5db; border-radius: 8px; outline: none;
+    }
+    .search-bar input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+    button.btn {
+      padding: 9px 16px; border-radius: 8px; border: 1px solid var(--primary);
+      background: var(--primary); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button.btn:hover { background: #1d4ed8; }
+    button.btn.sec { background: #fff; color: #374151; border-color: #d1d5db; font-weight: 500; }
+    button.btn.sec:hover { background: #f9fafb; }
+    button.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    .chip {
+      padding: 5px 12px; border-radius: 999px; border: 1px solid #d1d5db;
+      background: #fff; font-size: 13px; cursor: pointer; color: #374151;
+    }
+    .chip.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+    .filters-row {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center;
+      font-size: 13px; color: var(--muted);
+    }
+    .filters-row select, .filters-row input {
+      padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 13px; background: #fff; color: var(--text);
+    }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 12px; font-size: 13px; color: var(--muted); }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px 16px; margin-bottom: 10px;
+    }
+    .card-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+    .badge { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; }
+    .badge.up { background: var(--primary-soft); color: var(--primary); }
+    .badge.scene { background: var(--purple-soft); color: var(--purple); }
+    .badge.time { background: #f3f4f6; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .sub-text { font-size: 16px; line-height: 1.65; color: #0f172a; }
+    mark { background: #fef08a; color: #111827; padding: 0 2px; border-radius: 3px; }
+    .card-foot {
+      margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: space-between;
+      align-items: center; gap: 8px; font-size: 12px; color: var(--muted);
+    }
+    .card-actions { display: flex; gap: 10px; align-items: center; }
+    .link-btn {
+      background: none; border: none; color: var(--primary); cursor: pointer;
+      padding: 2px 4px; font-size: 12.5px; text-decoration: none;
+    }
+    .link-btn:hover { text-decoration: underline; }
+    .ctx-box {
+      margin-top: 10px; padding: 10px 12px; background: #f8fafc;
+      border-left: 3px solid #cbd5e1; border-radius: 6px; font-size: 13px; line-height: 1.6;
+    }
+    .ctx-line { display: flex; gap: 10px; padding: 2px 0; }
+    .ctx-line.hit { font-weight: 600; color: var(--primary); }
+    .ctx-ts { color: var(--muted); font-family: monospace; min-width: 68px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    th { background: #f9fafb; font-weight: 600; color: #374151; }
+    .log-box {
+      background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; line-height: 1.55; padding: 12px; border-radius: 8px;
+      max-height: 320px; overflow-y: auto; white-space: pre-wrap;
+    }
+    .qr-wrap { display: flex; gap: 16px; align-items: center; margin-top: 12px; }
+    .qr-wrap img { width: 168px; height: 168px; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: #fff; }
+    .hidden { display: none !important; }
+    .empty { text-align: center; padding: 36px 16px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <h1>枝江字幕库 · 本地后端运维台</h1>
+      <span><a href="/" target="_blank">打开公开前端页 (/) ↗</a> · <a href="/docs" target="_blank">OpenAPI 文档</a></span>
+    </div>
+    <div class="stat-pills">
+      <span class="pill" id="statVideos">场次分P: -</span>
+      <span class="pill" id="statLines">字幕总条数: -</span>
+      <span class="pill" id="statSize">库体积: -</span>
+      <span class="pill warn" id="authBadge" onclick="switchTab('ingest')">B站登录态检查中...</span>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-search" onclick="switchTab('search')">字幕检索验证</button>
+    <button class="tab-btn" id="tab-videos" onclick="switchTab('videos')">已入库场次</button>
+    <button class="tab-btn" id="tab-ingest" onclick="switchTab('ingest')">批量抓取与本地运维</button>
+  </div>
+</header>
+
+<main class="container">
+  <section id="view-search">
+    <div class="panel">
+      <div class="search-bar">
+        <input id="qInput" type="text" placeholder="搜台词、搜热梗、搜名场面… 如：小作文 / 嘉心糖 / 心球仪（空格分隔多词）" />
+        <button class="btn" onclick="runSearch(1)">搜索字幕</button>
+        <button class="btn sec" onclick="resetFilters()">重置</button>
+      </div>
+      <div class="chips" id="upChips">
+        <span style="font-size:13px;color:var(--muted);">UP 主：</span>
+        <button class="chip active" data-up="" onclick="toggleUp(this)">全部</button>
+        <button class="chip" data-up="嘉然" style="border-color:#e799b0;color:#9c3a5a;" onclick="toggleUp(this)">嘉然</button>
+        <button class="chip" data-up="贝拉" style="border-color:#db7d74;color:#a13a31;" onclick="toggleUp(this)">贝拉</button>
+        <button class="chip" data-up="乃琳" style="border-color:#576690;color:#364369;" onclick="toggleUp(this)">乃琳</button>
+        <button class="chip" data-up="向晚" style="border-color:#9ac8e2;color:#225f80;" onclick="toggleUp(this)">向晚</button>
+        <button class="chip" data-up="心宜" style="border-color:#c93773;color:#9d2256;" onclick="toggleUp(this)">心宜</button>
+        <button class="chip" data-up="思诺" style="border-color:#7252c0;color:#513399;" onclick="toggleUp(this)">思诺</button>
+      </div>
+      <div class="filters-row">
+        <label>场景：
+          <select id="sceneFilter" onchange="if(hasQuery()) runSearch(1)">
+            <option value="">全部场景</option>
+            <option value="solo">单播 (solo)</option>
+            <option value="duo">双播 (duo)</option>
+            <option value="group">团播 (group)</option>
+            <option value="special">特别场次 (special)</option>
+            <option value="unknown">未标注 (unknown)</option>
+          </select>
+        </label>
+        <span style="font-size:12px;color:var(--muted);">标签搜索未必准确，请酌情使用</span>
+        <label>起始日期：<input id="dateFrom" type="date" onchange="if(hasQuery()) runSearch(1)" /></label>
+        <label>截止日期：<input id="dateTo" type="date" onchange="if(hasQuery()) runSearch(1)" /></label>
+        <label>BV 号：<input id="bvidFilter" type="text" placeholder="如 BV1..." style="width:140px;" /></label>
+        <label>排序：
+          <select id="sortFilter" onchange="if(hasQuery()) runSearch(1)">
+            <option value="date_desc">按发布日期倒序</option>
+            <option value="date_asc">按发布日期正序</option>
+            <option value="relevance">按关键词相关度</option>
+          </select>
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+          <input id="fuzzyToggle" type="checkbox" checked onchange="if(hasQuery()) runSearch(1)" />
+          同音/别称模糊扩展
+        </label>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div id="searchSummary">请输入关键词或指定 BV 号 / 日期范围开始检索（默认不展示全量字幕）</div>
+      <div id="debugPagerTop" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+    <div id="searchResults">
+      <div class="panel empty">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">请输入关键词开始检索（默认不展示全量字幕，避免卡顿）</div>
+        <div>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与发言人不对应。</div>
+      </div>
+    </div>
+    <div class="toolbar" style="justify-content:flex-end;">
+      <div id="debugPagerBottom" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+  </section>
+
+  <section id="view-videos" class="hidden">
+    <div class="panel">
+      <div class="filters-row" style="margin-top:0;">
+        <label>UP 主：
+          <select id="vUpFilter" onchange="loadVideos()">
+            <option value="">全部</option>
+            <option value="嘉然">嘉然</option>
+            <option value="贝拉">贝拉</option>
+            <option value="乃琳">乃琳</option>
+            <option value="向晚">向晚</option>
+            <option value="心宜">心宜</option>
+            <option value="思诺">思诺</option>
+          </select>
+        </label>
+        <label>场景：
+          <select id="vSceneFilter" onchange="loadVideos()">
+            <option value="">全部</option>
+            <option value="solo">solo</option>
+            <option value="duo">duo</option>
+            <option value="group">group</option>
+            <option value="special">special</option>
+            <option value="unknown">unknown</option>
+          </select>
+        </label>
+        <label>状态：
+          <select id="vStatusFilter" onchange="loadVideos()">
+            <option value="">全部</option>
+            <option value="ok">ok（已入库字幕）</option>
+            <option value="no_subtitle">no_subtitle</option>
+            <option value="pending">pending</option>
+          </select>
+        </label>
+        <button class="btn sec" onclick="loadVideos()">刷新列表</button>
+        <button class="btn sec" onclick="triggerSceneTag()">运行轻量场景初筛</button>
+        <button class="btn sec" onclick="triggerOptimizeDb()">压缩优化索引</button>
+      </div>
+    </div>
+    <div class="panel" style="padding:0;overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>UP 主</th>
+            <th>发布日期</th>
+            <th>BV 号 / 分P</th>
+            <th>场次标题</th>
+            <th>字幕条数</th>
+            <th>状态</th>
+            <th>场景标签</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="videosTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="view-ingest" class="hidden">
+    <div class="grid-2">
+      <div class="panel">
+        <h3 style="margin:0 0 8px;">1. B 站登录态配置（仅存于本地 .env）</h3>
+        <div id="authDetail" style="font-size:13px;color:var(--muted);margin-bottom:12px;">正在检测登录态...</div>
+        <button class="btn" onclick="startQrLogin()">生成 B 站扫码登录二维码</button>
+        <div id="qrArea" class="qr-wrap hidden">
+          <img id="qrImg" alt="B站登录二维码" />
+          <div style="font-size:13px;line-height:1.6;">
+            <div><b>请使用手机 B 站 App 扫码</b></div>
+            <div id="qrStatus" style="color:var(--primary);margin-top:4px;">等待扫码...</div>
+          </div>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;" />
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;">或手动粘贴 Cookie / SESSDATA：</div>
+        <div style="display:flex;gap:8px;">
+          <input id="cookieInput" type="password" placeholder="粘贴完整 Cookie 或 SESSDATA 值" style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;" />
+          <button class="btn sec" onclick="saveManualCookie()">保存并校验</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin:0 0 8px;">2. 从「直播回放」合集增量抓取</h3>
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">
+          已完整入库的 BV 号会秒级跳过（不发 HTTP 请求），可放心分批或断点续抓。
+        </div>
+        <div class="filters-row" style="margin-top:0;">
+          <label>目标成员：
+            <select id="ingTarget">
+              <option value="all">全部 6 位成员</option>
+              <option value="嘉然">嘉然（series 222940）</option>
+              <option value="贝拉">贝拉（series 222938）</option>
+              <option value="乃琳">乃琳（series 222754）</option>
+              <option value="向晚">向晚（series 222748）</option>
+              <option value="心宜">心宜（series 3698069）</option>
+              <option value="思诺">思诺（series 3692011）</option>
+            </select>
+          </label>
+          <label>每人抓取场次：
+            <input id="ingLimit" type="number" value="20" min="0" max="5000" style="width:82px;" />
+            <span style="font-size:12px;">(0=全部)</span>
+          </label>
+        </div>
+        <div class="filters-row">
+          <label>起始日期：<input id="ingSince" type="date" /></label>
+          <label>截止日期：<input id="ingUntil" type="date" /></label>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+          <button class="btn" id="startIngestBtn" onclick="startIngest()">开始抓取并入库</button>
+          <span id="ingestStatusText" style="font-size:13px;color:var(--muted);">空闲</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <b>抓取实时日志</b>
+        <button class="btn sec" style="padding:4px 10px;font-size:12px;" onclick="pollIngestStatus()">刷新日志</button>
+      </div>
+      <div id="ingestLog" class="log-box">暂无抓取任务日志。</div>
+    </div>
+  </section>
+</main>
+
+<script>
+let selectedUps = new Set();
+let currentPage = 1;
+let totalPages = 0;
+const pageLimit = 20;
+let qrTimer = null;
+let ingestTimer = null;
+
+function hasQuery() {
+  return Boolean(
+    document.getElementById('qInput').value.trim() ||
+    document.getElementById('bvidFilter').value.trim() ||
+    document.getElementById('dateFrom').value ||
+    document.getElementById('dateTo').value
+  );
+}
+
+function esc(s) {
+  return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function highlight(text, q, expandedMap) {
+  let out = esc(text);
+  const terms = new Set((q || '').trim().split(/\s+/).filter(Boolean));
+  if (expandedMap) {
+    for (const arr of Object.values(expandedMap)) {
+      for (const v of arr) terms.add(v);
+    }
+  }
+  const sorted = Array.from(terms).sort((a, b) => b.length - a.length);
+  for (const t of sorted) {
+    const safe = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(safe, 'gi'), m => `<mark>${m}</mark>`);
+  }
+  return out;
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    setTimeout(() => btn.textContent = old, 1200);
+  });
+}
+
+function switchTab(tab) {
+  for (const name of ['search', 'videos', 'ingest']) {
+    document.getElementById('view-' + name).classList.toggle('hidden', name !== tab);
+    document.getElementById('tab-' + name).classList.toggle('active', name === tab);
+  }
+  if (tab === 'videos') loadVideos();
+  if (tab === 'ingest') { checkAuth(); pollIngestStatus(); }
+}
+
+function toggleUp(el) {
+  const up = el.dataset.up || '';
+  if (!up) {
+    selectedUps.clear();
+  } else if (selectedUps.has(up)) {
+    selectedUps.delete(up);
+  } else {
+    selectedUps.add(up);
+  }
+  document.querySelectorAll('#upChips .chip').forEach(c => {
+    const key = c.dataset.up || '';
+    c.classList.toggle('active', key === '' ? selectedUps.size === 0 : selectedUps.has(key));
+  });
+  if (hasQuery()) runSearch(1);
+}
+
+function resetFilters() {
+  document.getElementById('qInput').value = '';
+  document.getElementById('sceneFilter').value = '';
+  document.getElementById('dateFrom').value = '';
+  document.getElementById('dateTo').value = '';
+  document.getElementById('bvidFilter').value = '';
+  document.getElementById('sortFilter').value = 'date_desc';
+  selectedUps.clear();
+  document.querySelectorAll('#upChips .chip').forEach(c => c.classList.toggle('active', c.dataset.up === ''));
+  document.getElementById('searchSummary').textContent = '请输入关键词或指定 BV 号 / 日期范围开始检索（默认不展示全量字幕）';
+  document.getElementById('debugPagerTop').innerHTML = '';
+  document.getElementById('debugPagerBottom').innerHTML = '';
+  document.getElementById('searchResults').innerHTML = '<div class="panel empty"><div style="font-weight:600;color:var(--text);margin-bottom:6px;">请输入关键词开始检索（默认不展示全量字幕，避免卡顿）</div><div>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与发言人不对应。</div></div>';
+}
+
+async function loadStats() {
+  const r = await fetch('/api/v1/stats');
+  const s = await r.json();
+  document.getElementById('statVideos').textContent = `场次分P: ${s.video_parts_ok} / ${s.video_parts_total}`;
+  document.getElementById('statLines').textContent = `字幕总条数: ${s.subtitles_total.toLocaleString()}`;
+  document.getElementById('statSize').textContent = `库体积: ${s.db_size_mb} MB`;
+}
+
+async function checkAuth() {
+  const r = await fetch('/api/v1/admin/auth/status');
+  const a = await r.json();
+  const badge = document.getElementById('authBadge');
+  const detail = document.getElementById('authDetail');
+  if (a.is_login) {
+    badge.className = 'pill ok';
+    badge.textContent = `B站已登录: ${a.uname || a.mid}`;
+    detail.innerHTML = `<span style="color:var(--ok);font-weight:600;">已登录 B 站账号：${esc(a.uname)} (UID: ${a.mid})</span>`;
+  } else {
+    badge.className = 'pill warn';
+    badge.textContent = '未登录 B 站（点此登录）';
+    detail.innerHTML = `<span style="color:var(--warn);font-weight:600;">当前未检测到有效 B 站登录态。</span>抓取官方 AI 字幕（ai-zh）需要先扫码登录或填写 SESSDATA。`;
+  }
+}
+
+function renderDebugPagers() {
+  const html = totalPages > 1 ? `
+    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(1)" ${currentPage <= 1 ? 'disabled' : ''}>首页</button>
+    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>上一页</button>
+    <span style="font-size:12px;">第 ${currentPage} / ${totalPages} 页</span>
+    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>下一页</button>
+    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''}>末页</button>
+    <input type="number" min="1" max="${totalPages}" value="${currentPage}" style="width:56px;padding:3px 6px;font-size:12px;" onkeydown="if(event.key==='Enter') runSearch(parseInt(this.value||'1',10))" />
+  ` : '';
+  document.getElementById('debugPagerTop').innerHTML = html;
+  document.getElementById('debugPagerBottom').innerHTML = html;
+}
+
+async function runSearch(page) {
+  if (!hasQuery()) {
+    resetFilters();
+    return;
+  }
+  currentPage = Math.max(1, page || 1);
+  const offset = (currentPage - 1) * pageLimit;
+  const q = document.getElementById('qInput').value.trim();
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (selectedUps.size > 0) params.set('up_name', Array.from(selectedUps).join(','));
+  const scene = document.getElementById('sceneFilter').value;
+  const df = document.getElementById('dateFrom').value;
+  const dt = document.getElementById('dateTo').value;
+  const bv = document.getElementById('bvidFilter').value.trim();
+  const sort = document.getElementById('sortFilter').value;
+  const fuzzy = document.getElementById('fuzzyToggle').checked;
+  if (scene) params.set('scene_type', scene);
+  if (df) params.set('date_from', df);
+  if (dt) params.set('date_to', dt);
+  if (bv) params.set('bvid', bv);
+  params.set('sort', sort);
+  params.set('fuzzy', fuzzy ? 'true' : 'false');
+  params.set('limit', pageLimit);
+  params.set('offset', offset);
+
+  const r = await fetch('/api/v1/search?' + params.toString());
+  const data = await r.json();
+  const p = data.pagination;
+  totalPages = p.total_pages || 0;
+  const startNum = p.total === 0 ? 0 : p.offset + 1;
+  const endNum = p.offset + data.items.length;
+  let expNote = '';
+  if (data.fuzzy_expanded && Object.keys(data.fuzzy_expanded).length) {
+    const parts = Object.entries(data.fuzzy_expanded).map(([k, v]) => `${k} → ${v.join(' / ')}`);
+    expNote = ` ｜ 同音扩展：${parts.join('；')}`;
+  }
+  document.getElementById('searchSummary').textContent =
+    `共命中 ${p.total.toLocaleString()} 条字幕（当前显示 ${startNum} - ${endNum}）${expNote}`;
+  renderDebugPagers();
+
+  const box = document.getElementById('searchResults');
+  if (!data.items.length) {
+    box.innerHTML = `<div class="panel empty">没有找到匹配的字幕记录。</div>`;
+    return;
+  }
+
+  box.innerHTML = data.items.map(it => `
+    <div class="card" id="card-${it.id}">
+      <div class="card-meta">
+        <span class="badge up">${esc(it.up_name)}</span>
+        <span class="badge scene">${esc(it.scene_type)}</span>
+        <span class="badge time">${esc(it.start_hms)} ~ ${esc(it.end_hms)}</span>
+        <span>(${it.start_sec.toFixed(2)}s - ${it.end_sec.toFixed(2)}s)</span>
+        <span>${esc(it.pub_date)}</span>
+        <span><b>${esc(it.bvid)}</b> P${it.page}</span>
+      </div>
+      <div class="sub-text">${highlight(it.content, q, data.fuzzy_expanded)}</div>
+      <div class="card-foot">
+        <div>${esc(it.title)}${it.part_title && it.part_title !== it.title ? ' · ' + esc(it.part_title) : ''}</div>
+        <div class="card-actions">
+          <button class="link-btn" onclick="toggleContext(${it.id}, '${esc(it.bvid)}', ${it.page}, ${it.start_sec})">查看前后上下文</button>
+          <button class="link-btn" onclick="copyText('${esc(it.jump_url)}', this)">复制空降链接</button>
+          <a class="link-btn" href="${esc(it.jump_url)}" target="_blank" rel="noopener noreferrer" title="若播放器被历史进度覆盖，打开后按 F5 或手动拖至 ${esc(it.start_hms)}">打开 B 站 (${esc(it.start_hms)}) ↗</a>
+        </div>
+      </div>
+      <div class="ctx-box hidden" id="ctx-${it.id}"></div>
+    </div>
+  `).join('');
+}
+
+function changePage(dir) { runSearch(Math.max(0, currentOffset + dir * pageLimit)); }
+
+async function toggleContext(subId, bvid, page, startSec) {
+  const el = document.getElementById('ctx-' + subId);
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.textContent = '正在加载前后上下文...';
+  const r = await fetch(`/api/v1/videos/${encodeURIComponent(bvid)}/subtitles?page=${page}&start_sec=${Math.max(0, startSec - 25)}&end_sec=${startSec + 25}&limit=30`);
+  const data = await r.json();
+  if (!data.items.length) { el.textContent = '暂无上下文数据'; return; }
+  el.innerHTML = data.items.map(x => `
+    <div class="ctx-line ${x.id === subId ? 'hit' : ''}">
+      <span class="ctx-ts">${x.start_sec.toFixed(2)}s</span>
+      <span>${esc(x.content)}</span>
+    </div>
+  `).join('');
+}
+
+async function loadVideos() {
+  const params = new URLSearchParams();
+  const up = document.getElementById('vUpFilter').value;
+  const sc = document.getElementById('vSceneFilter').value;
+  const st = document.getElementById('vStatusFilter').value;
+  if (up) params.set('up_name', up);
+  if (sc) params.set('scene_type', sc);
+  if (st) params.set('status', st); else params.set('status', '');
+  params.set('limit', 100);
+  const r = await fetch('/api/v1/videos?' + params.toString());
+  const data = await r.json();
+  const tbody = document.getElementById('videosTbody');
+  if (!data.items.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无已入库场次</td></tr>'; return; }
+  tbody.innerHTML = data.items.map(v => {
+    const vUrl = v.page > 1 ? `https://www.bilibili.com/video/${esc(v.bvid)}/?p=${v.page}` : `https://www.bilibili.com/video/${esc(v.bvid)}/`;
+    return `
+      <tr>
+        <td><b>${esc(v.up_name)}</b></td>
+        <td>${esc(v.pub_date)}</td>
+        <td><a class="link-btn" href="${vUrl}" target="_blank" rel="noopener noreferrer">${esc(v.bvid)} P${v.page}</a></td>
+        <td>${esc(v.title)}${v.part_title ? '<br><span style="color:var(--muted);font-size:12px;">' + esc(v.part_title) + '</span>' : ''}</td>
+        <td>${v.line_count}</td>
+        <td>${esc(v.subtitle_status)}</td>
+        <td>
+          <select onchange="patchScene('${esc(v.bvid)}', ${v.page}, this.value)" style="padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;">
+            ${['unknown','solo','duo','group','special'].map(opt => `<option value="${opt}" ${v.scene_type===opt?'selected':''}>${opt}</option>`).join('')}
+          </select>
+        </td>
+        <td><button class="link-btn" onclick="searchByBvid('${esc(v.bvid)}')">搜本场</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function searchByBvid(bvid) {
+  document.getElementById('bvidFilter').value = bvid;
+  switchTab('search');
+  runSearch(1);
+}
+
+async function patchScene(bvid, page, sceneType) {
+  await fetch(`/api/v1/admin/videos/${encodeURIComponent(bvid)}/scene`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ page, scene_type: sceneType, lock: true, reason: 'manual_debug_ui' })
+  });
+  loadStats();
+}
+
+async function triggerSceneTag() {
+  const r = await fetch('/api/v1/admin/scenes/tag', { method: 'POST' });
+  const data = await r.json();
+  alert(`场景初筛完成：处理 ${data.processed} 个分 P（跳过人工锁定 ${data.skipped_locked} 个）`);
+  loadVideos();
+  loadStats();
+}
+
+async function triggerOptimizeDb() {
+  const r = await fetch('/api/v1/admin/db/optimize', { method: 'POST' });
+  const data = await r.json();
+  alert(`索引优化完成，当前数据库体积：${data.db_size_mb} MB`);
+  loadStats();
+}
+
+async function startQrLogin() {
+  if (qrTimer) clearInterval(qrTimer);
+  const r = await fetch('/api/v1/admin/auth/qrcode', { method: 'POST' });
+  const data = await r.json();
+  if (!r.ok) { alert(data.detail || '生成二维码失败'); return; }
+  document.getElementById('qrArea').classList.remove('hidden');
+  document.getElementById('qrImg').src = data.qr_svg_data_uri;
+  document.getElementById('qrStatus').textContent = '等待扫码...';
+  qrTimer = setInterval(async () => {
+    const pr = await fetch('/api/v1/admin/auth/qrcode/poll?qrcode_key=' + encodeURIComponent(data.qrcode_key));
+    const pd = await pr.json();
+    document.getElementById('qrStatus').textContent = pd.status_text || pd.message || ('状态码: ' + pd.code);
+    if (pd.code === 0) { clearInterval(qrTimer); qrTimer = null; await checkAuth(); }
+    else if (pd.code === 86038) { clearInterval(qrTimer); qrTimer = null; }
+  }, 2000);
+}
+
+async function saveManualCookie() {
+  const val = document.getElementById('cookieInput').value.trim();
+  if (!val) { alert('请先粘贴 Cookie 或 SESSDATA'); return; }
+  const r = await fetch('/api/v1/admin/auth/cookie', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ cookie: val })
+  });
+  const data = await r.json();
+  if (!r.ok) { alert(data.detail || '保存失败'); return; }
+  document.getElementById('cookieInput').value = '';
+  await checkAuth();
+  alert(data.is_login ? `登录验证成功！账号：${data.uname}` : 'Cookie 已保存，但 B 站返回未登录状态，请检查 SESSDATA。');
+}
+
+async function startIngest() {
+  const body = {
+    target: document.getElementById('ingTarget').value,
+    limit: parseInt(document.getElementById('ingLimit').value || '20', 10),
+    since_date: document.getElementById('ingSince').value || null,
+    until_date: document.getElementById('ingUntil').value || null,
+    auto_tag_scenes: true,
+    force: false
+  };
+  const r = await fetch('/api/v1/admin/ingest/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (!r.ok) { alert(data.detail || '启动抓取失败'); return; }
+  pollIngestStatus();
+  if (ingestTimer) clearInterval(ingestTimer);
+  ingestTimer = setInterval(pollIngestStatus, 2000);
+}
+
+async function pollIngestStatus() {
+  const r = await fetch('/api/v1/admin/ingest/status');
+  const st = await r.json();
+  document.getElementById('startIngestBtn').disabled = st.running;
+  document.getElementById('ingestStatusText').textContent = st.running
+    ? `抓取进行中（${st.current_target || '...'}）`
+    : (st.last_finished_at ? `上次任务已结束：${st.last_summary || '完成'}` : '空闲');
+  if (st.logs && st.logs.length) {
+    const box = document.getElementById('ingestLog');
+    box.textContent = st.logs.join('\n');
+    box.scrollTop = box.scrollHeight;
+  }
+  await loadStats();
+  if (!st.running && ingestTimer) { clearInterval(ingestTimer); ingestTimer = null; runSearch(0); }
+}
+
+document.getElementById('qInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(1); });
+document.getElementById('bvidFilter').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(1); });
+
+loadStats();
+checkAuth();
+</script>
+</body>
+</html>

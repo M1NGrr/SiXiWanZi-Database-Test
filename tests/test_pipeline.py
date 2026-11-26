@@ -1,0 +1,406 @@
+"""端到端自动化测试：建库、清洗、增量去重、FTS5 中文检索、场景初筛、切片规划与 FastAPI."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Dict, List
+
+import pytest
+from fastapi.testclient import TestClient
+
+from zhijiang_corpus.api import create_app
+from zhijiang_corpus.asr_backfill import _is_whisper_hallucination, list_no_subtitle_targets
+from zhijiang_corpus.bilibili_client import SubtitleTrack, VideoInfo, VideoPageInfo
+from zhijiang_corpus.cleaner import clean_bcc_payload, clean_srt_text
+from zhijiang_corpus.clip_planner import plan_clip_job
+from zhijiang_corpus.config import load_config
+from zhijiang_corpus.db import CorpusDB
+from zhijiang_corpus.ingest import ingest_bvids, ingest_local_file, seed_demo_data
+from zhijiang_corpus.normalizer import (
+    apply_domain_corrections,
+    build_fuzzy_fts_query,
+    run_corpus_normalization,
+)
+from zhijiang_corpus.scene_tagger import run_scene_tagging
+from zhijiang_corpus.search import SearchQuery, SearchService
+from zhijiang_corpus.wbi import extract_wbi_keys, sign_wbi_params
+
+
+def test_wbi_signing_deterministic() -> None:
+    nav = {
+        "wbi_img": {
+            "img_url": "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+            "sub_url": "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png",
+        }
+    }
+    img_key, sub_key = extract_wbi_keys(nav)
+    assert img_key == "7cd084941338484aae1ad9425b84077c"
+    assert sub_key == "4932caff0ff746eab6f01bf08b70ac45"
+    signed = sign_wbi_params(
+        {"bvid": "BV1xx411c7mD", "cid": 123456, "note": "a!b'c(d)e*"},
+        img_key,
+        sub_key,
+        timestamp=1700000000,
+    )
+    assert signed["wts"] == "1700000000"
+    assert signed["note"] == "abcde"
+    assert len(signed["w_rid"]) == 32
+
+
+def test_cleaner_bcc_and_srt() -> None:
+    raw_bcc = {
+        "body": [
+            {"from": 10.126, "to": 12.5, "content": "  嘉然\u200b今天  吃什么 &amp; 唱歌  "},
+            {"from": 10.13, "to": 12.5, "content": "嘉然今天 吃什么 & 唱歌"},  # 完全重复去重
+            {"from": 13.0, "to": 14.0, "content": "[音乐]"},
+            {"from": 15.0, "to": 14.0, "content": "..."},  # 纯标点噪声
+            {"from": -2.0, "to": -1.0, "content": "负时间校正"},
+        ]
+    }
+    cleaned = clean_bcc_payload(raw_bcc)
+    assert len(cleaned) == 2
+    assert cleaned[0].start_sec == 0.0
+    assert cleaned[0].end_sec == 0.0
+    assert cleaned[0].content == "负时间校正"
+    assert cleaned[1].start_sec == 10.13
+    assert cleaned[1].content == "嘉然今天 吃什么 & 唱歌"
+
+    # 校验繁转简归一化
+    trad = clean_bcc_payload({"body": [{"from": 1.0, "to": 2.0, "content": "元宵節快樂，看我手語！"}]})
+    assert trad[0].content == "元宵节快乐，看我手语！"
+
+    srt = (
+        "1\n00:01:02,500 --> 00:01:05,250\n你好，枝江！\n\n"
+        "2\n00:01:06,000 --> 00:01:08,000\n（掌声）\n"
+    )
+    srt_items = clean_srt_text(srt)
+    assert len(srt_items) == 1
+    assert srt_items[0].start_sec == 62.5
+    assert srt_items[0].end_sec == 65.25
+    assert srt_items[0].content == "你好，枝江！"
+
+
+def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
+    db_file = tmp_path / "test_corpus.db"
+    cfg = load_config(db_path=db_file)
+    db = CorpusDB(db_file)
+
+    # 1. 首次写入 demo 数据 + 重复写入验证去重
+    first = seed_demo_data(db)
+    assert first["videos"] == 6
+    assert first["lines_inserted"] > 20
+    assert first["lines_duplicate"] == 0
+
+    second = seed_demo_data(db)
+    assert second["lines_inserted"] == 0
+    assert second["lines_duplicate"] == first["lines_inserted"]
+
+    # 2. 轻量场景初筛（验证标题无法区分的贝拉+向晚双播也能被字幕识别！）
+    tagged = run_scene_tagging(db, cfg, dry_run=False)
+    by_bvid = {r.bvid: r for r in tagged}
+    assert by_bvid["BV1DEMO000001"].new_scene_type == "solo"     # 嘉然单播
+    assert by_bvid["BV1DEMO000002"].new_scene_type == "duo"      # 贝拉+向晚（纯靠字幕识别）
+    assert by_bvid["BV1DEMO000003"].new_scene_type == "group"    # 乃琳团播
+    assert by_bvid["BV1DEMO000004"].new_scene_type == "solo"     # 向晚单播
+    assert by_bvid["BV1DEMO000005"].new_scene_type == "duo"      # 心宜+思诺小心思
+    assert by_bvid["BV1DEMO000006"].new_scene_type == "special"  # 思诺生日会
+
+    # 3. 人工锁定后再次初筛不会被覆盖
+    db.update_scene_type("BV1DEMO000002", 1, "group", reason="人工复核", lock=True)
+    retagged = run_scene_tagging(db, cfg, dry_run=False)
+    by_bvid2 = {r.bvid: r for r in retagged}
+    assert by_bvid2["BV1DEMO000002"].skipped_locked is True
+    assert db.get_video("BV1DEMO000002", 1)["scene_type"] == "group"
+
+    # 4. 中文 1字 / 2字 / 长短语 / 英文 / 多关键词 / 过滤 / 分页 / 上下文检索
+    svc = SearchService(db)
+
+    # 3字短语 + 跨 UP 命中
+    r_essay = svc.search(SearchQuery(q="小作文"))
+    assert r_essay["pagination"]["total"] == 5
+
+    # 2字中文精确检索 + UP 过滤
+    r_po = svc.search(SearchQuery(q="破防", up_names=["向晚"]))
+    assert r_po["pagination"]["total"] == 1
+    assert r_po["items"][0]["bvid"] == "BV1DEMO000004"
+
+    # 1字中文检索
+    r_one = svc.search(SearchQuery(q="笑", limit=3, offset=0))
+    assert r_one["pagination"]["total"] >= 3
+    assert len(r_one["items"]) == 3
+    assert r_one["pagination"]["has_more"] is True
+
+    # 英文混排检索
+    r_en = svc.search(SearchQuery(q="A-SOUL"))
+    assert r_en["pagination"]["total"] == 1
+    assert r_en["items"][0]["up_name"] == "乃琳"
+
+    # 多词 AND + 日期过滤 + scene_type 过滤 + 上下文
+    r_multi = svc.search(
+        SearchQuery(
+            q="卧底 然然",
+            date_from="2024-08-01",
+            date_to="2024-08-31",
+            scene_types=["group"],
+            context_lines=1,
+        )
+    )
+    assert r_multi["pagination"]["total"] == 1
+    hit = r_multi["items"][0]
+    assert len(hit["context_before"]) == 1
+    assert len(hit["context_after"]) == 1
+
+    # 软隐藏 is_visible = 0 默认不可见，include_hidden=True 可见
+    db.update_visibility("BV1DEMO000004", 1, 0)
+    assert svc.search(SearchQuery(q="破防", up_names=["向晚"]))["pagination"]["total"] == 0
+    assert (
+        svc.search(SearchQuery(q="破防", up_names=["向晚"], include_hidden=True))[
+            "pagination"
+        ]["total"]
+        == 1
+    )
+
+    # 5. FFmpeg 切片清单规划（相邻两句自动合并为一段）
+    win = svc.get_subtitle_window("BV1DEMO000001", 1)
+    first_two_ids = [win["items"][0]["id"], win["items"][1]["id"]]
+    manifest = plan_clip_job(
+        db,
+        subtitle_ids=first_two_ids,
+        pad_before_sec=1.0,
+        pad_after_sec=1.0,
+        merge_gap_sec=3.0,
+    )
+    assert manifest["segment_count"] == 1
+    assert manifest["segments"][0]["subtitle_ids"] == first_two_ids
+    assert manifest["segments"][0]["ffmpeg_cut_cmd"][0] == "ffmpeg"
+
+
+def test_local_import_and_mocked_bvid_incremental_ingest(tmp_path: Path) -> None:
+    db_file = tmp_path / "ingest.db"
+    cfg = load_config(db_path=db_file)
+    db = CorpusDB(db_file)
+
+    # 本地 BCC JSON 导入
+    bcc_path = tmp_path / "sample_bcc.json"
+    bcc_path.write_text(
+        json.dumps(
+            {
+                "body": [
+                    {"from": 1.0, "to": 3.5, "content": "欢迎来到测试直播回放"},
+                    {"from": 4.0, "to": 6.5, "content": "今天状态很不错"},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    ins, dup = ingest_local_file(
+        db,
+        bcc_path,
+        up_name="嘉然",
+        bvid="BV1LOCAL00001",
+        page=1,
+        pub_date="2025-02-01",
+        title="本地测试回放",
+    )
+    assert (ins, dup) == (2, 0)
+
+    # 模拟 B站客户端抓取多 P 视频并验证增量跳过
+    class FakeBiliClient:
+        has_sessdata = True
+
+        def get_video_info(self, bvid: str) -> VideoInfo:
+            return VideoInfo(
+                bvid=bvid,
+                aid=99999,
+                title="【直播回放】模拟抓取测试",
+                desc="测试简介",
+                up_uid=672328094,
+                raw_up_name="嘉然今天吃什么",
+                pub_ts=1739500000,
+                pub_date="2025-02-14",
+                duration_sec=3600,
+                pages=[
+                    VideoPageInfo(page=1, cid=111, part_title="P1 上半场", duration_sec=1800),
+                    VideoPageInfo(page=2, cid=222, part_title="P2 下半场", duration_sec=1800),
+                ],
+            )
+
+        def list_subtitle_tracks(self, bvid: str, cid: int) -> List[SubtitleTrack]:
+            if cid == 111:
+                return [
+                    SubtitleTrack(
+                        lan="ai-zh",
+                        lan_doc="中文（自动生成）",
+                        subtitle_url="https://example.com/p1.json",
+                        ai_type=1,
+                    )
+                ]
+            return []  # P2 模拟无字幕
+
+        @staticmethod
+        def pick_subtitle_track(tracks: Any, prefer_lans: Any = None) -> Any:
+            return tracks[0] if tracks else None
+
+        def fetch_subtitle_json(self, subtitle_url: str) -> Dict[str, Any]:
+            return {
+                "body": [
+                    {"from": 10.0, "to": 13.0, "content": "情人节快乐嘉心糖！"},
+                    {"from": 14.0, "to": 17.5, "content": "我们一起唱情歌吧！"},
+                ]
+            }
+
+    fake = FakeBiliClient()
+    s1 = ingest_bvids(db, cfg, ["BV1MOCK000001"], client=fake)  # type: ignore[arg-type]
+    assert s1.parts_ok == 1
+    assert s1.parts_no_subtitle == 1
+    assert s1.lines_inserted == 2
+
+    # 再次增量运行：整部 BV 已被 is_bvid_completed 秒级预判跳过，不重复发任何网络请求
+    s2 = ingest_bvids(db, cfg, ["BV1MOCK000001"], client=fake)  # type: ignore[arg-type]
+    assert s2.parts_skipped == 1
+    assert s2.lines_inserted == 0
+    assert db.optimize_db()["status"] == "ok"
+
+
+def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
+    db_file = tmp_path / "api.db"
+    db = CorpusDB(db_file)
+    seed_demo_data(db)
+    cfg = load_config(db_path=db_file)
+    run_scene_tagging(db, cfg, dry_run=False)
+
+    # 1. 云端公网只读模式（enable_admin=False）：不暴露任何 admin 接口或调试页
+    pub_app = create_app(db_path=db_file, enable_admin=False)
+    pub_client = TestClient(pub_app)
+    assert pub_client.get("/api/v1/health").status_code == 200
+    assert pub_client.get("/api/v1/members").status_code == 200
+    assert pub_client.get("/debug").status_code == 404
+    assert pub_client.get("/api/v1/admin/auth/status").status_code == 404
+    assert pub_client.patch(
+        "/api/v1/admin/videos/BV1DEMO000001/scene",
+        json={"page": 1, "scene_type": "special"},
+    ).status_code == 404
+
+    st = pub_client.get("/api/v1/stats").json()
+    assert "db_path" not in st  # 公网统计不暴露服务器本地磁盘路径
+    assert st["video_parts_total"] == 6
+    assert st["subtitles_total"] > 20
+
+    sr = pub_client.get("/api/v1/search", params={"q": "小作文", "up_name": "嘉然,向晚"}).json()
+    assert sr["pagination"]["total"] == 2
+    # 校验规范化的 B 站空降 URL（带尾部斜杠、单 P 不带冗余 p=1）
+    first_item = sr["items"][0]
+    assert first_item["jump_url"].startswith(f"https://www.bilibili.com/video/{first_item['bvid']}/?t=")
+    assert first_item["video_url"] == f"https://www.bilibili.com/video/{first_item['bvid']}/"
+
+    # 2. 本地运维模式（enable_admin=True）：允许调用 /api/v1/admin/* 与 /debug
+    loc_app = create_app(db_path=db_file, enable_admin=True)
+    loc_client = TestClient(loc_app)
+    assert loc_client.get("/debug").status_code == 200
+
+    patch = loc_client.patch(
+        "/api/v1/admin/videos/BV1DEMO000001/scene",
+        json={"page": 1, "scene_type": "special", "lock": True, "reason": "api_test"},
+    )
+    assert patch.status_code == 200
+
+    sr2 = loc_client.get("/api/v1/search", params={"q": "小作文", "scene_type": "special"}).json()
+    assert any(it["bvid"] == "BV1DEMO000001" for it in sr2["items"])
+
+    hit_id = sr["items"][0]["id"]
+    plan = loc_client.post("/api/v1/admin/clips/plan", json={"subtitle_ids": [hit_id]}).json()
+    assert plan["segment_count"] == 1
+    assert plan["segments"][0]["subtitle_ids"] == [hit_id]
+
+
+def test_asr_backfill_helpers(tmp_path: Path) -> None:
+    db_file = tmp_path / "asr_helper.db"
+    db = CorpusDB(db_file)
+    db.init_db()
+    from zhijiang_corpus.db import VideoRecord
+
+    # 写入一个 3 秒碎片和一个 600 秒正常无字幕分 P
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1SHORT0001",
+            page=1,
+            cid=1,
+            up_name="心宜",
+            pub_date="2026-01-01",
+            duration_sec=3,
+            subtitle_status="no_subtitle",
+        ),
+        [],
+    )
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1LONG00001",
+            page=1,
+            cid=2,
+            up_name="心宜",
+            pub_date="2026-01-02",
+            duration_sec=600,
+            subtitle_status="no_subtitle",
+        ),
+        [],
+    )
+    targets = list_no_subtitle_targets(db, min_duration=15, limit=10)
+    assert [t["bvid"] for t in targets] == ["BV1LONG00001"]
+    assert _is_whisper_hallucination("以下是B站虚拟偶像嘉然") is True
+    assert _is_whisper_hallucination("今天晚上吃什么呀") is False
+
+
+def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
+    # 1. Tier 1 & Tier 2 纠错与排除保护校验
+    assert apply_domain_corrections("欢迎 a sou 和佳然、欣怡、奶麒麟、顶晚人、星球仪！") == (
+        "欢迎 A-SOUL 和嘉然、心宜、奶淇琳、顶碗人、心球仪！"
+    )
+    # 保留 小海螺 / 小螺，排除 斯诺克 / 家乐福 / 不是心仪 / 心仪的 / 一心一意 / 小心一点
+    assert apply_domain_corrections("欢迎小海螺和小螺，我喜欢打斯诺克，也喜欢斯诺！") == (
+        "欢迎小海螺和小螺，我喜欢打斯诺克，也喜欢思诺！"
+    )
+    assert apply_domain_corrections("心宜不是心仪，送你心仪的礼物，欢迎心仪公主") == (
+        "心宜不是心仪，送你心仪的礼物，欢迎心宜公主"
+    )
+    assert apply_domain_corrections("一心一意小心一点，乃零三分，陪诺零点庆生") == (
+        "一心一意小心一点，乃0三分，陪诺零点庆生"
+    )
+    assert apply_domain_corrections("去家乐福买东西，还有家乐") == "去家乐福买东西，还有珈乐"
+    assert apply_domain_corrections("我是一宝", up_name="心宜") == "我是宜宝"
+    assert apply_domain_corrections("我是一宝", up_name="嘉然") == "我是一宝"
+
+    # 2. 同音模糊查询表达式校验
+    expr, expanded = build_fuzzy_fts_query("小海诺", fuzzy=True)
+    assert '"小 海 诺"' in expr and '"小 海 螺"' in expr and '"小 螺"' in expr
+    assert "小海诺" in expanded
+
+    # 3. 存量批量修复 + 模糊搜索端到端校验
+    db_file = tmp_path / "norm.db"
+    db = CorpusDB(db_file)
+    db.init_db()
+    from zhijiang_corpus.db import SubtitleRow, VideoRecord
+
+    db.save_video_and_subtitles(
+        VideoRecord(bvid="BV1NORM00001", page=1, up_name="心宜", pub_date="2026-01-01", subtitle_status="ok"),
+        [
+            SubtitleRow(up_name="心宜", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=1.0, end_sec=3.0, content="欣怡和斯诺欢迎奶麒麟和小海螺"),
+            SubtitleRow(up_name="心宜", bvid="BV1NORM00001", page=1, pub_date="2026-01-01", start_sec=4.0, end_sec=6.0, content="心宜不是心仪哦"),
+        ],
+    )
+    # 模拟历史遗留未清洗入库后执行批量修复
+    res = run_corpus_normalization(db, dry_run=False)
+    assert res["updated"] == 1
+
+    svc = SearchService(db)
+    # 搜 小海诺（模糊模式）能同时搜到保留原文的 小海螺！
+    r_fuzzy = svc.search(SearchQuery(q="小海诺", fuzzy=True))
+    assert r_fuzzy["pagination"]["total"] == 1
+    assert "小海螺" in r_fuzzy["items"][0]["content"]
+    # 精确模式不扩展
+    r_exact = svc.search(SearchQuery(q="小海诺", fuzzy=False))
+    assert r_exact["pagination"]["total"] == 0
+    # 搜 思诺 能搜到被修复后的 斯诺 -> 思诺
+    r_sinuo = svc.search(SearchQuery(q="思诺", fuzzy=False))
+    assert r_sinuo["pagination"]["total"] == 1
