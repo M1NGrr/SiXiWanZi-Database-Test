@@ -351,17 +351,20 @@
       });
     });
 
-    const hotList = CFG.HOT_KEYWORDS || [];
-    $("hotTags").innerHTML = hotList.map((kw) => (
-      `<button type="button" class="hot-tag" data-kw="${esc(kw)}">${esc(kw)}</button>`
-    )).join("");
-    $("hotTags").querySelectorAll(".hot-tag").forEach((tag) => {
-      tag.addEventListener("click", () => {
-        $("qInput").value = tag.dataset.kw || "";
-        syncClearBtn();
-        runSearch(1, false);
+    const hotTagsEl = $("hotTags");
+    if (hotTagsEl) {
+      const hotList = CFG.HOT_KEYWORDS || [];
+      hotTagsEl.innerHTML = hotList.map((kw) => (
+        `<button type="button" class="hot-tag" data-kw="${esc(kw)}">${esc(kw)}</button>`
+      )).join("");
+      hotTagsEl.querySelectorAll(".hot-tag").forEach((tag) => {
+        tag.addEventListener("click", () => {
+          $("qInput").value = tag.dataset.kw || "";
+          syncClearBtn();
+          runSearch(1, false);
+        });
       });
-    });
+    }
   }
 
   function buildPageNumbers(current, total) {
