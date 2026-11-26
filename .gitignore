@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .env
+.cloud_sync.env
 data/*.db
 data/*.db-wal
 data/*.db-shm
@@ -11,4 +12,9 @@ data/*.gz
 data/*.json
 data/cache/
 data/tmp_asr/
+promo_video/node_modules/
+promo_video/out/
+promo_video/qa/
+promo_video/audio/
+promo_video/.showreel-editor/
 !data/.gitkeep

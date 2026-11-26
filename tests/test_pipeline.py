@@ -404,3 +404,60 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     # 搜 思诺 能搜到被修复后的 斯诺 -> 思诺
     r_sinuo = svc.search(SearchQuery(q="思诺", fuzzy=False))
     assert r_sinuo["pagination"]["total"] == 1
+
+
+def test_incremental_delta_sync_and_live_stats(tmp_path: Path) -> None:
+    from zhijiang_corpus.db import SubtitleRow, VideoRecord
+    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
+
+    local_db = CorpusDB(tmp_path / "local.db")
+    cloud_db = CorpusDB(tmp_path / "cloud.db")
+    local_db.init_db()
+    cloud_db.init_db()
+
+    # 初始共同数据：旧分 P（2026-11-20）
+    v_old = VideoRecord(bvid="BV1SYNC00001", page=1, up_name="嘉然", pub_date="2026-11-20", subtitle_status="ok", scene_type="solo")
+    s_old = [SubtitleRow(up_name="嘉然", bvid="BV1SYNC00001", page=1, pub_date="2026-11-20", start_sec=10.0, end_sec=12.0, content="旧直播玉米粑粑")]
+    local_db.save_video_and_subtitles(v_old, s_old)
+    cloud_db.save_video_and_subtitles(v_old, s_old)
+
+    # 本地新入库 1 场最新直播（2026-11-28），云端尚未同步
+    v_new = VideoRecord(bvid="BV1SYNC00002", page=1, up_name="思诺", pub_date="2026-11-28", subtitle_status="ok", scene_type="solo")
+    s_new = [
+        SubtitleRow(up_name="思诺", bvid="BV1SYNC00002", page=1, pub_date="2026-11-28", start_sec=5.0, end_sec=8.0, content="小海诺增量同步成功啦"),
+        SubtitleRow(up_name="思诺", bvid="BV1SYNC00002", page=1, pub_date="2026-11-28", start_sec=9.0, end_sec=12.0, content="首页时间跨度也会自动更新"),
+    ]
+    local_db.save_video_and_subtitles(v_new, s_new)
+
+    # 1. 拉取云端清单并仅导出增量补丁
+    remote_manifest = build_manifest(cloud_db)
+    delta_file = tmp_path / "delta.json.gz"
+    exp = export_delta(local_db, remote_manifest, delta_file)
+    assert exp["parts_new"] == 1
+    assert exp["parts_changed"] == 1
+    assert exp["subtitles_exported"] == 2
+
+    # 2. 在云端公网只读接口保持挂载的同时热应用补丁
+    pub_app = create_app(db_path=cloud_db.db_path, enable_admin=False)
+    client = TestClient(pub_app)
+    before_stats = client.get("/api/v1/stats").json()
+    assert before_stats["date_max"] == "2026-11-20"
+    assert before_stats["subtitles_total"] == 1
+
+    res = apply_delta(cloud_db, delta_file)
+    assert res["parts_applied"] == 1
+    assert res["subtitles_inserted"] == 2
+
+    # 3. 不重启服务，公网 /api/v1/stats 与 /api/v1/search 立刻生效
+    after_stats = client.get("/api/v1/stats").json()
+    assert after_stats["date_max"] == "2026-11-28"
+    assert after_stats["subtitles_total"] == 3
+    assert after_stats["video_parts_ok"] == 2
+
+    sr = client.get("/api/v1/search", params={"q": "增量同步成功"}).json()
+    assert sr["pagination"]["total"] == 1
+    assert sr["items"][0]["bvid"] == "BV1SYNC00002"
+
+    # 4. 再次导出增量应为 0 变动
+    exp2 = export_delta(local_db, build_manifest(cloud_db), delta_file)
+    assert exp2["parts_changed"] == 0

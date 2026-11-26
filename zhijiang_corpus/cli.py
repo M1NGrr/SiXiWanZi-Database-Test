@@ -22,6 +22,7 @@ from .ingest import ingest_bvids, ingest_from_up, ingest_local_file, seed_demo_d
 from .normalizer import run_corpus_normalization
 from .scene_tagger import run_scene_tagging
 from .search import SearchQuery, SearchService
+from .sync_delta import apply_delta, build_manifest, export_delta
 
 
 def _print_json(data: object) -> None:
@@ -394,6 +395,42 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync_manifest(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db)
+    db = CorpusDB(cfg.db_path)
+    manifest = build_manifest(db)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    else:
+        print(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")))
+    return 0
+
+
+def cmd_export_delta(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db)
+    db = CorpusDB(cfg.db_path)
+    remote_manifest = {}
+    if args.remote_manifest:
+        rm_path = Path(args.remote_manifest)
+        if rm_path.exists():
+            raw = rm_path.read_text(encoding="utf-8").strip()
+            if raw:
+                remote_manifest = json.loads(raw)
+    res = export_delta(db, remote_manifest, args.out)
+    _print_json(res)
+    return 0
+
+
+def cmd_apply_delta(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db)
+    db = CorpusDB(cfg.db_path)
+    res = apply_delta(db, args.delta_file)
+    _print_json(res)
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     cfg = load_config(db_path=args.db)
     enable_admin = not args.public_only
@@ -558,6 +595,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_stats = sub.add_parser("stats", help="查看当前语料库统计概览")
     p_stats.set_defaults(func=cmd_stats)
+
+    p_manifest = sub.add_parser("sync-manifest", help="导出当前数据库分 P 清单（用于增量同步比对）")
+    p_manifest.add_argument("--out", default=None, help="写入指定文件路径（不填则直接输出到 stdout）")
+    p_manifest.set_defaults(func=cmd_sync_manifest)
+
+    p_edelta = sub.add_parser("export-delta", help="对比云端清单，仅导出新增或变动的分 P 增量补丁包")
+    p_edelta.add_argument("--remote-manifest", required=True, help="从云端拉取的 manifest JSON 文件路径")
+    p_edelta.add_argument("--out", required=True, help="输出增量补丁路径（.json.gz）")
+    p_edelta.set_defaults(func=cmd_export_delta)
+
+    p_adelta = sub.add_parser("apply-delta", help="在云端 SQLite WAL 模式下热应用增量补丁包（零停服）")
+    p_adelta.add_argument("delta_file", help="增量补丁路径（.json.gz）")
+    p_adelta.set_defaults(func=cmd_apply_delta)
 
     p_serve = sub.add_parser("serve", help="启动后端 API 服务（默认本地含调试台，--public-only 为公网只读模式）")
     p_serve.add_argument("--host", default=None, help="监听地址（默认 127.0.0.1）")

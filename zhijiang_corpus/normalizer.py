@@ -227,11 +227,11 @@ def run_corpus_normalization(
 
         with db.session() as conn:
             rows = conn.execute(
-                f"SELECT id, up_name, content FROM subtitles WHERE id IN ({ph})",
+                f"SELECT id, up_name, bvid, page, content FROM subtitles WHERE id IN ({ph})",
                 chunk,
             ).fetchall()
 
-            to_update: List[Tuple[str, str, int]] = []
+            to_update: List[Tuple[str, str, int, str, int]] = []
             for r in rows:
                 sid = int(r["id"])
                 up_name = str(r["up_name"])
@@ -244,10 +244,12 @@ def run_corpus_normalization(
                     continue
                 if len(samples) < 15:
                     samples.append({"up": up_name, "old": old_text, "new": new_text})
-                to_update.append((new_text, tokenize_for_fts(new_text), sid))
+                to_update.append((new_text, tokenize_for_fts(new_text), sid, str(r["bvid"]), int(r["page"])))
 
             if not dry_run and to_update:
-                for new_text, new_fts, sid in to_update:
+                touched_parts = set()
+                for new_text, new_fts, sid, bvid, page in to_update:
+                    touched_parts.add((bvid, page))
                     try:
                         conn.execute(
                             "UPDATE subtitles SET content = ?, content_fts = ? WHERE id = ?",
@@ -258,6 +260,17 @@ def run_corpus_normalization(
                         # 修正后若与同分 P 同时间点已存在的标准字幕完全重复，则安全去重删除
                         conn.execute("DELETE FROM subtitles WHERE id = ?", (sid,))
                         dedup_deleted += 1
+                # 同步刷新受影响分 P 的 updated_at 与 line_count，确保增量同步能自动感知词表纠错改动
+                for bvid, page in touched_parts:
+                    conn.execute(
+                        """
+                        UPDATE videos
+                           SET line_count = (SELECT COUNT(*) FROM subtitles WHERE bvid = ? AND page = ?),
+                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                         WHERE bvid = ? AND page = ?
+                        """,
+                        (bvid, page, bvid, page),
+                    )
             else:
                 updated_count += len(to_update)
 
