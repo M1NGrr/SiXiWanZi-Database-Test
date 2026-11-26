@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from zhijiang_corpus.config import AppConfig, VALID_SCENE_TYPES
 from zhijiang_corpus.db import CorpusDB
@@ -44,8 +44,9 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             },
         }
 
-    @router.get("/stats", summary="语料库公开统计信息")
-    def stats() -> Dict[str, Any]:
+    @router.get("/stats", summary="语料库公开统计信息（实时读取数据库，禁止缓存）")
+    def stats(response: Response) -> Dict[str, Any]:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         raw = db.get_stats()
         # 公网统计不暴露服务器本地磁盘绝对路径
         return {
@@ -56,6 +57,7 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             "subtitles_visible": raw["subtitles_visible"],
             "date_min": raw["date_min"],
             "date_max": raw["date_max"],
+            "latest_updated_at": raw.get("latest_updated_at"),
             "by_up": raw["by_up"],
             "by_scene": raw["by_scene"],
         }

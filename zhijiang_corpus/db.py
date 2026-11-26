@@ -442,7 +442,22 @@ class CorpusDB:
                 ).fetchall()
             ]
             date_range = conn.execute(
-                "SELECT MIN(pub_date) AS min_date, MAX(pub_date) AS max_date FROM videos"
+                """
+                SELECT MIN(pub_date) AS min_date,
+                       MAX(pub_date) AS max_date
+                  FROM videos
+                 WHERE subtitle_status = 'ok'
+                   AND is_visible = 1
+                   AND pub_date != ''
+                """
+            ).fetchone()
+            if not date_range or not date_range["min_date"]:
+                date_range = conn.execute(
+                    "SELECT MIN(pub_date) AS min_date, MAX(pub_date) AS max_date "
+                    "FROM videos WHERE pub_date != ''"
+                ).fetchone()
+            latest_updated = conn.execute(
+                "SELECT MAX(updated_at) AS latest_updated_at FROM videos"
             ).fetchone()
 
         db_size_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
@@ -455,6 +470,9 @@ class CorpusDB:
             "subtitles_visible": sub_visible,
             "date_min": date_range["min_date"] if date_range else None,
             "date_max": date_range["max_date"] if date_range else None,
+            "latest_updated_at": (
+                latest_updated["latest_updated_at"] if latest_updated else None
+            ),
             "by_up": by_up,
             "by_scene": by_scene,
         }

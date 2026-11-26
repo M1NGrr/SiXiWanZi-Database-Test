@@ -211,14 +211,27 @@
     }
   }
 
+  function formatLocalDateTime(isoStr) {
+    if (!isoStr) return "";
+    const d = new Date(isoStr);
+    if (Number.isNaN(d.getTime())) return String(isoStr);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function renderLandingStatsAndCards() {
     const st = state.stats;
     if (st) {
       $("statTotalLines").textContent = formatNumber(st.subtitles_total);
       $("statTotalParts").textContent = `${formatNumber(st.video_parts_ok)} 个分P`;
       $("statDateRange").textContent = st.date_min && st.date_max
-        ? `${st.date_min.slice(0, 7)} ~ ${st.date_max.slice(0, 7)}`
+        ? `${st.date_min} ~ ${st.date_max}`
         : "—";
+      const updatedEl = $("statUpdatedAt");
+      if (updatedEl) {
+        const ts = formatLocalDateTime(st.latest_updated_at);
+        updatedEl.textContent = ts ? `库最近更新：${ts}` : "";
+      }
     }
 
     const byUpMap = {};
@@ -559,6 +572,24 @@
     $("clearInputBtn").classList.toggle("hidden", !$("qInput").value);
   }
 
+  let lastStatsFetchAt = 0;
+
+  async function refreshStats(force) {
+    const now = Date.now();
+    if (!force && now - lastStatsFetchAt < 30000) return;
+    lastStatsFetchAt = now;
+    try {
+      const sRes = await fetch(`${API_BASE}/api/v1/stats`, { cache: "no-store" });
+      if (sRes.ok) {
+        state.stats = await sRes.json();
+        renderLandingStatsAndCards();
+        updateSearchPlaceholder();
+      }
+    } catch (err) {
+      // 忽略后台静默刷新失败
+    }
+  }
+
   function resetAll() {
     $("qInput").value = "";
     $("dateFrom").value = "";
@@ -573,6 +604,7 @@
     renderSceneChips();
     syncClearBtn();
     showLandingMode();
+    refreshStats(true);
   }
 
   async function init() {
@@ -630,8 +662,8 @@
 
     try {
       const [mRes, sRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/members`),
-        fetch(`${API_BASE}/api/v1/stats`)
+        fetch(`${API_BASE}/api/v1/members`, { cache: "no-store" }),
+        fetch(`${API_BASE}/api/v1/stats`, { cache: "no-store" })
       ]);
       if (mRes.ok) {
         const mData = await mRes.json();
@@ -642,10 +674,17 @@
       }
       if (sRes.ok) {
         state.stats = await sRes.json();
+        lastStatsFetchAt = Date.now();
       }
     } catch (err) {
       // 后端不可达时保留默认成员卡片
     }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && !state.hasSearched) {
+        refreshStats(false);
+      }
+    });
 
     renderMemberChips();
     renderLandingStatsAndCards();
