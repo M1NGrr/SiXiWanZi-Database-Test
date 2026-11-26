@@ -98,9 +98,8 @@ if (-not $SyncOnly -and -not $SkipIngest) {
         Write-Host "`n==> [2/4] 已按参数跳过本地 GPU 语音补录 (-SkipAsr)" -ForegroundColor DarkGray
     }
 
-    Write-Host "`n==> [3/4] 执行枝江专有名词纠错与新视频场景初筛..." -ForegroundColor Cyan
+    Write-Host "`n==> [3/4] 执行专有名词纠错修复..." -ForegroundColor Cyan
     & $Py run.py normalize-corpus
-    & $Py run.py tag-scenes --only-unknown
 } else {
     Write-Host "`n==> [1-3/4] 已跳过本地抓取，直接比对并同步本地与云端的差异数据..." -ForegroundColor DarkGray
 }

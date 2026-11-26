@@ -13,6 +13,7 @@ data/*.gz
 data/*.json
 data/cache/
 data/tmp_asr/
+data/models/
 promo_video/node_modules/
 promo_video/out/
 promo_video/qa/

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query, Response
 
-from zhijiang_corpus.config import AppConfig, PROJECT_ROOT, VALID_SCENE_TYPES
+from zhijiang_corpus.config import AppConfig, PROJECT_ROOT
 from zhijiang_corpus.db import CorpusDB
 from zhijiang_corpus.search import SearchQuery, SearchService
 
@@ -61,7 +61,7 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
     def health() -> Dict[str, Any]:
         return {"status": "ok", "mode": "read_only_api"}
 
-    @router.get("/members", summary="获取成员应援色、粉丝名与场景枚举元数据（供前端渲染）")
+    @router.get("/members", summary="获取成员应援色、粉丝名与站点元数据（供前端渲染）")
     def list_members() -> Dict[str, Any]:
         return {
             "members": [
@@ -75,7 +75,6 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
                 }
                 for m in cfg.members
             ],
-            "scene_types": list(VALID_SCENE_TYPES),
             "site": {
                 "author_name": os.getenv("ZJ_AUTHOR_NAME", "M1NG"),
                 "author_bilibili_url": os.getenv("ZJ_AUTHOR_BILI_URL", ""),
@@ -110,7 +109,6 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
             "latest_video": raw.get("latest_video"),
             "announcements": _load_announcements(),
             "by_up": raw["by_up"],
-            "by_scene": raw["by_scene"],
         }
 
     @router.get("/search", summary="关键词检索 AI 字幕语料")
@@ -121,31 +119,35 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
         ),
         date_from: Optional[str] = Query(default=None, description="起始日期 YYYY-MM-DD"),
         date_to: Optional[str] = Query(default=None, description="截止日期 YYYY-MM-DD"),
-        scene_type: Optional[str] = Query(
-            default=None, description="场景过滤，支持逗号分隔，如 solo,duo,group"
-        ),
         bvid: Optional[str] = Query(default=None, description="限定单个 BV 号"),
         context_lines: int = Query(default=0, ge=0, le=10, description="附带前后上下文字幕条数"),
         fuzzy: bool = Query(
             default=True,
             description="开启同音/别称/Tier 3 歧义词模糊扩展（如搜 四禧丸子 同时命中 四喜丸子，搜 小沐标 同时命中 小目标）",
         ),
+        host_only: bool = Query(
+            default=False,
+            description="兼容参数：过滤声纹识别出的非主播原声（等价于 speaker_source=host）",
+        ),
+        speaker_source: Optional[str] = Query(
+            default=None,
+            pattern="^(all|host|host_verified|external)$",
+            description="声音来源筛选：all=全部来源，host=仅主播原声（过滤无关音轨），host_verified=仅已识别主播原声，external=仅主播无关音轨",
+        ),
         sort: str = Query(default="date_desc", pattern="^(date_desc|date_asc|relevance)$"),
         limit: int = Query(default=20, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
     ) -> Dict[str, Any]:
         up_list = [x.strip() for x in up_name.split(",") if x.strip()] if up_name else None
-        scene_list = (
-            [x.strip() for x in scene_type.split(",") if x.strip()] if scene_type else None
-        )
         req = SearchQuery(
             q=q,
             up_names=up_list,
             date_from=date_from,
             date_to=date_to,
-            scene_types=scene_list,
             bvid=bvid,
             include_hidden=False,  # 公网接口始终只返回 is_visible=1
+            host_only=host_only,
+            speaker_source=speaker_source,
             fuzzy=fuzzy,
             context_lines=context_lines,
             sort=sort,
@@ -157,14 +159,12 @@ def build_public_router(db: CorpusDB, cfg: AppConfig) -> APIRouter:
     @router.get("/videos", summary="浏览已收录直播回放分 P 列表")
     def list_videos(
         up_name: Optional[str] = None,
-        scene_type: Optional[str] = None,
         status: Optional[str] = Query(default="ok", description="默认仅展示已入库字幕的分 P"),
         limit: int = Query(default=50, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
     ) -> Dict[str, Any]:
         return search_svc.list_videos(
             up_name=up_name,
-            scene_type=scene_type,
             status=status or None,
             include_hidden=False,
             limit=limit,

@@ -16,13 +16,19 @@ from .api import create_app
 from .asr_backfill import resplit_legacy_asr, run_asr_backfill
 from .bilibili_client import BilibiliClient
 from .clip_planner import plan_clip_job
-from .config import VALID_SCENE_TYPES, load_config, save_cookie_to_env
+from .config import load_config, save_cookie_to_env
 from .db import CorpusDB
 from .ingest import ingest_bvids, ingest_from_up, ingest_local_file, seed_demo_data
 from .normalizer import run_corpus_normalization
-from .scene_tagger import run_scene_tagging
 from .search import SearchQuery, SearchService
 from .sync_delta import apply_delta, build_manifest, export_delta
+from .voiceprint import (
+    DEFAULT_MODEL_PATH,
+    DEFAULT_VOICEPRINTS_PATH,
+    enroll_member_voiceprint,
+    parse_time_to_sec,
+    run_voiceprint_scoring,
+)
 
 
 def _print_json(data: object) -> None:
@@ -287,52 +293,9 @@ def cmd_ingest_local(args: argparse.Namespace) -> int:
         pub_date=args.pub_date,
         title=args.title or "",
         part_title=args.part_title or "",
-        scene_type=args.scene_type,
         force=args.force,
     )
     print(f"[OK] 本地字幕导入完成: 新增 {ins} 条，忽略重复 {dup} 条")
-    return 0
-
-
-def cmd_tag_scenes(args: argparse.Namespace) -> int:
-    cfg = load_config(db_path=args.db)
-    db = CorpusDB(cfg.db_path)
-    results = run_scene_tagging(
-        db,
-        cfg,
-        bvid=args.bvid,
-        only_unknown=args.only_unknown,
-        fallback_solo=not args.keep_unknown_solo,
-        dry_run=args.dry_run,
-    )
-    if args.json:
-        _print_json([r.__dict__ for r in results])
-    else:
-        mode = "预览 (dry-run)" if args.dry_run else "已写入数据库"
-        print(f"=== 轻量场景初筛结果 [{mode}]，共 {len(results)} 个分 P ===")
-        for r in results:
-            flag = " [LOCKED]" if r.skipped_locked else ""
-            print(
-                f"- {r.up_name} | {r.bvid} P{r.page} | "
-                f"{r.old_scene_type} -> {r.new_scene_type} (conf={r.confidence:.2f}){flag}"
-            )
-            print(f"  标题: {r.title}")
-            print(f"  依据: {'; '.join(r.reasons)}")
-    return 0
-
-
-def cmd_set_scene(args: argparse.Namespace) -> int:
-    cfg = load_config(db_path=args.db)
-    db = CorpusDB(cfg.db_path)
-    n = db.update_scene_type(
-        args.bvid,
-        args.page,
-        args.scene_type,
-        confidence=1.0,
-        reason=args.reason,
-        lock=not args.no_lock,
-    )
-    print(f"[OK] 已更新 {n} 条视频分 P 的 scene_type={args.scene_type} (lock={not args.no_lock})")
     return 0
 
 
@@ -347,20 +310,19 @@ def cmd_set_visibility(args: argparse.Namespace) -> int:
 def cmd_search(args: argparse.Namespace) -> int:
     cfg = load_config(db_path=args.db)
     db = CorpusDB(cfg.db_path)
+    db.init_db()
     svc = SearchService(db)
     up_list = [x.strip() for x in args.up.split(",") if x.strip()] if args.up else None
-    scene_list = (
-        [x.strip() for x in args.scene.split(",") if x.strip()] if args.scene else None
-    )
     res = svc.search(
         SearchQuery(
             q=args.q or "",
             up_names=up_list,
             date_from=args.date_from,
             date_to=args.date_to,
-            scene_types=scene_list,
             bvid=args.bvid,
             include_hidden=args.include_hidden,
+            host_only=args.host_only,
+            speaker_source=args.speaker_source,
             fuzzy=not args.exact,
             context_lines=args.context,
             sort=args.sort,
@@ -387,10 +349,16 @@ def cmd_search(args: argparse.Namespace) -> int:
             f"(显示 {p['offset'] + 1}..{p['offset'] + len(res['items'])}) ==="
         )
         for it in res["items"]:
+            spk_tag = (
+                f"{it['speaker_name']}原声"
+                if it.get("speaker_label") == "host" and it.get("speaker_name")
+                else ("主播无关音轨" if it.get("speaker_label") == "external" else it.get("speaker_label", ""))
+            )
+            spk_str = f" | {spk_tag}" if spk_tag and spk_tag != "unknown" else ""
             print(
                 f"[#{it['id']}] {it['up_name']} | {it['pub_date']} | "
                 f"{it['bvid']} P{it['page']} | {it['start_sec']:.2f}s-{it['end_sec']:.2f}s "
-                f"({it['start_hms']}) | scene={it['scene_type']}"
+                f"({it['start_hms']}){spk_str}"
             )
             print(f"    字幕: {it['content']}")
             if it.get("context_before"):
@@ -408,6 +376,53 @@ def cmd_stats(args: argparse.Namespace) -> int:
     db = CorpusDB(cfg.db_path)
     _print_json(db.get_stats())
     return 0
+
+
+def cmd_enroll_voiceprint(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db, cookie=args.cookie)
+    db = CorpusDB(cfg.db_path)
+    res = enroll_member_voiceprint(
+        db,
+        cfg,
+        args.up,
+        args.bvid,
+        args.page,
+        parse_time_to_sec(args.start),
+        parse_time_to_sec(args.end),
+        voiceprints_path=Path(args.voiceprints) if args.voiceprints else DEFAULT_VOICEPRINTS_PATH,
+        model_path=Path(args.model) if args.model else DEFAULT_MODEL_PATH,
+        num_threads=args.threads,
+        progress_cb=lambda m: print(m, flush=True),
+    )
+    _print_json(res)
+    return 0
+
+
+def cmd_score_voiceprints(args: argparse.Namespace) -> int:
+    cfg = load_config(db_path=args.db, cookie=args.cookie)
+    db = CorpusDB(cfg.db_path)
+    eff_limit = None if args.limit == 0 else args.limit
+    try:
+        summary = run_voiceprint_scoring(
+            db,
+            cfg,
+            bvid=args.bvid,
+            page=args.page,
+            up_name=args.up,
+            re_only=args.re_only,
+            force=args.force,
+            limit=eff_limit,
+            voiceprints_path=Path(args.voiceprints) if args.voiceprints else DEFAULT_VOICEPRINTS_PATH,
+            model_path=Path(args.model) if args.model else DEFAULT_MODEL_PATH,
+            num_threads=args.threads,
+            keep_audio=args.keep_audio,
+            progress_cb=lambda m: print(m, flush=True),
+        )
+        _print_json(summary.__dict__)
+        return 0 if summary.parts_failed == 0 else 1
+    except KeyboardInterrupt:
+        print("\n[INTERRUPTED] 收到 Ctrl+C，已完成声纹打分的分 P 均已提交入库，下次重跑会自动跳过。")
+        return 0
 
 
 def cmd_sync_manifest(args: argparse.Namespace) -> int:
@@ -522,25 +537,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_loc.add_argument("--pub-date", required=True, help="发布日期 YYYY-MM-DD")
     p_loc.add_argument("--title", default="", help="视频标题")
     p_loc.add_argument("--part-title", default="", help="分 P 标题")
-    p_loc.add_argument("--scene-type", default="unknown", choices=VALID_SCENE_TYPES)
     p_loc.add_argument("--force", action="store_true", help="强制替换该分 P 已有字幕")
     p_loc.set_defaults(func=cmd_ingest_local)
-
-    p_tag = sub.add_parser("tag-scenes", help="运行轻量规则场景初筛（单播/双播/团播/联动/特别场次）")
-    p_tag.add_argument("--bvid", default=None, help="仅对指定 BV 号运行")
-    p_tag.add_argument("--only-unknown", action="store_true", help="仅处理当前为 unknown 的场次")
-    p_tag.add_argument("--keep-unknown-solo", action="store_true", help="无多人特征时不自动标 solo，保留 unknown")
-    p_tag.add_argument("--dry-run", action="store_true", help="仅预览打标结果，不写入数据库")
-    p_tag.add_argument("--json", action="store_true", help="以 JSON 格式输出")
-    p_tag.set_defaults(func=cmd_tag_scenes)
-
-    p_set_s = sub.add_parser("set-scene", help="人工修正并锁定指定视频的 scene_type")
-    p_set_s.add_argument("bvid", help="BV 号")
-    p_set_s.add_argument("scene_type", choices=VALID_SCENE_TYPES, help="目标场景类型")
-    p_set_s.add_argument("--page", type=int, default=None, help="指定分 P（不填则更新全部分 P）")
-    p_set_s.add_argument("--reason", default="manual_cli", help="标注备注")
-    p_set_s.add_argument("--no-lock", action="store_true", help="不锁定（允许后续自动初筛覆盖）")
-    p_set_s.set_defaults(func=cmd_set_scene)
 
     p_vis = sub.add_parser("set-visibility", help="设置视频/分 P 可见性（is_visible=1/0）")
     p_vis.add_argument("bvid", help="BV 号")
@@ -550,14 +548,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_search = sub.add_parser("search", help="关键词搜索字幕语料")
     p_search.add_argument("q", nargs="?", default="", help="搜索关键词（空格分隔多词 AND）")
-    p_search.add_argument("--up", default=None, help="UP 主过滤（可逗号分隔，如 嘉然,贝拉）")
+    p_search.add_argument("--up", default=None, help="UP 主过滤（可逗号分隔，如 沐霂,又一）")
     p_search.add_argument("--date-from", default=None, help="起始日期 YYYY-MM-DD")
     p_search.add_argument("--date-to", default=None, help="结束日期 YYYY-MM-DD")
-    p_search.add_argument("--scene", default=None, help="scene_type 过滤（可逗号分隔）")
     p_search.add_argument("--bvid", default=None, help="限定单个 BV 号")
     p_search.add_argument("--context", type=int, default=0, help="显示前后上下文字幕条数")
     p_search.add_argument("--sort", default="date_desc", choices=["date_desc", "date_asc", "relevance"])
     p_search.add_argument("--exact", action="store_true", help="关闭同音/别称模糊扩展，仅严格精确匹配")
+    p_search.add_argument("--host-only", action="store_true", help="过滤声纹识别出的非主播原声（external）")
+    p_search.add_argument(
+        "--speaker-source",
+        default=None,
+        choices=["all", "host", "host_verified", "external"],
+        help="按声音来源筛选（all/host/host_verified/external）",
+    )
     p_search.add_argument("--include-hidden", action="store_true", help="包含隐藏条目")
     p_search.add_argument("--limit", type=int, default=20, help="每页返回条数")
     p_search.add_argument("--offset", type=int, default=0, help="分页偏移量")
@@ -625,6 +629,38 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_stats = sub.add_parser("stats", help="查看当前语料库统计概览")
     p_stats.set_defaults(func=cmd_stats)
+
+    p_enroll = sub.add_parser(
+        "enroll-voiceprint",
+        help="从某位成员的一段干净单播片段提取并更新 CAM++ 声纹模板（写入 config/voiceprints.json）",
+    )
+    p_enroll.add_argument("up", help="成员简称（沐霂/又一/恬豆/梨安）")
+    p_enroll.add_argument("--bvid", required=True, help="干净参考片段所在 BV 号")
+    p_enroll.add_argument("--page", type=int, default=1, help="分 P 号（默认 1）")
+    p_enroll.add_argument("--start", required=True, help="起始时间（支持 MM:SS、HH:MM:SS 或秒数）")
+    p_enroll.add_argument("--end", required=True, help="结束时间（支持 MM:SS、HH:MM:SS 或秒数）")
+    p_enroll.add_argument("--voiceprints", default=None, help="声纹模板输出 JSON 路径")
+    p_enroll.add_argument("--model", default=None, help="自定义 CAM++ ONNX 模型路径")
+    p_enroll.add_argument("--threads", type=int, default=4, help="ONNX CPU 线程数（默认 4）")
+    p_enroll.add_argument("--cookie", default=None, help="临时覆盖 B 站 Cookie")
+    p_enroll.set_defaults(func=cmd_enroll_voiceprint)
+
+    p_sv = sub.add_parser(
+        "score-voiceprints",
+        help="对已入库分 P 运行离线四成员 CAM++ 声纹打分，区分各位成员原声与主播无关音轨",
+    )
+    p_sv.add_argument("--bvid", default=None, help="仅对指定 BV 号打分")
+    p_sv.add_argument("--page", type=int, default=None, help="仅对指定分 P 打分（配合 --bvid）")
+    p_sv.add_argument("--up", default=None, help="仅对指定成员的录播打分（如 又一）")
+    p_sv.add_argument("--re-only", action="store_true", help="仅处理标题含 Re/观影/一起看/电影/剧集 等特征的混合场次")
+    p_sv.add_argument("--limit", type=int, default=10, help="本次最多处理分 P 数（默认 10，0=全部未打分分 P）")
+    p_sv.add_argument("--force", action="store_true", help="强制重跑已打分的分 P")
+    p_sv.add_argument("--voiceprints", default=None, help="声纹模板 JSON 路径")
+    p_sv.add_argument("--model", default=None, help="自定义 CAM++ ONNX 模型路径")
+    p_sv.add_argument("--threads", type=int, default=4, help="ONNX CPU 线程数（默认 4）")
+    p_sv.add_argument("--keep-audio", action="store_true", help="保留临时 WAV 文件（调试用）")
+    p_sv.add_argument("--cookie", default=None, help="临时覆盖 B 站 Cookie")
+    p_sv.set_defaults(func=cmd_score_voiceprints)
 
     p_manifest = sub.add_parser("sync-manifest", help="导出当前数据库分 P 清单（用于增量同步比对）")
     p_manifest.add_argument("--out", default=None, help="写入指定文件路径（不填则直接输出到 stdout）")

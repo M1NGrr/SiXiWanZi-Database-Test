@@ -33,6 +33,7 @@ VIDEO_COLS = (
     "scene_reason",
     "scene_locked",
     "is_visible",
+    "voiceprint_status",
     "extra_meta",
     "created_at",
     "updated_at",
@@ -45,12 +46,13 @@ def _part_key(bvid: str, page: int) -> str:
 
 def build_manifest(db: CorpusDB) -> Dict[str, Dict[str, Any]]:
     """导出当前数据库所有分 P 的轻量签名清单（3,300+ 行耗时 <5ms，约 50KB）."""
+    db.init_db()
     manifest: Dict[str, Dict[str, Any]] = {}
     with db.session() as conn:
         rows = conn.execute(
             """
             SELECT bvid, page, updated_at, line_count,
-                   subtitle_status, scene_type, is_visible
+                   subtitle_status, scene_type, is_visible, voiceprint_status
               FROM videos
             """
         ).fetchall()
@@ -61,6 +63,7 @@ def build_manifest(db: CorpusDB) -> Dict[str, Dict[str, Any]]:
                 "subtitle_status": str(r["subtitle_status"] or ""),
                 "scene_type": str(r["scene_type"] or ""),
                 "is_visible": int(r["is_visible"] if r["is_visible"] is not None else 1),
+                "voiceprint_status": str(r["voiceprint_status"] or "none"),
             }
     return manifest
 
@@ -68,7 +71,7 @@ def build_manifest(db: CorpusDB) -> Dict[str, Dict[str, Any]]:
 def _is_part_changed(local_entry: Dict[str, Any], remote_entry: Dict[str, Any] | None) -> bool:
     if remote_entry is None:
         return True
-    for field in ("line_count", "subtitle_status", "scene_type", "is_visible"):
+    for field in ("line_count", "subtitle_status", "scene_type", "is_visible", "voiceprint_status"):
         if local_entry.get(field) != remote_entry.get(field):
             return True
     if str(local_entry.get("updated_at") or "") > str(remote_entry.get("updated_at") or ""):
@@ -113,7 +116,9 @@ def export_delta(
                     continue
                 srows = conn.execute(
                     """
-                    SELECT start_sec, end_sec, content, scene_type, is_visible, source
+                    SELECT start_sec, end_sec, content, scene_type, is_visible, source,
+                           speaker_label, speaker_sim, speaker_name,
+                           content_locked, speaker_locked
                       FROM subtitles
                      WHERE bvid = ? AND page = ?
                      ORDER BY start_sec ASC, id ASC
@@ -128,6 +133,11 @@ def export_delta(
                         str(s["scene_type"]),
                         int(s["is_visible"]),
                         str(s["source"]),
+                        str(s["speaker_label"] or "unknown"),
+                        round(float(s["speaker_sim"]), 4) if s["speaker_sim"] is not None else None,
+                        str(s["speaker_name"] or ""),
+                        int(s["content_locked"] or 0),
+                        int(s["speaker_locked"] or 0),
                     ]
                     for s in srows
                 ]
@@ -173,6 +183,7 @@ def apply_delta(
     optimize: bool = False,
 ) -> Dict[str, Any]:
     """在云端数据库上热应用增量补丁包（SQLite WAL 事务 + FTS5 触发器自动同步，零停服）."""
+    db.init_db()
     path = Path(delta_path)
     if not path.exists():
         raise FileNotFoundError(f"增量补丁文件不存在: {path}")
@@ -225,6 +236,11 @@ def apply_delta(
                             str(s[3]),
                             int(s[4]),
                             str(s[5]),
+                            str(s[6]) if len(s) > 6 and s[6] else "unknown",
+                            str(s[8]) if len(s) > 8 and s[8] else "",
+                            round(float(s[7]), 4) if len(s) > 7 and s[7] is not None else None,
+                            int(s[9]) if len(s) > 9 and s[9] is not None else 0,
+                            int(s[10]) if len(s) > 10 and s[10] is not None else 0,
                         )
                         for s in subs
                     ]
@@ -233,8 +249,9 @@ def apply_delta(
                         INSERT OR IGNORE INTO subtitles (
                             up_name, bvid, page, pub_date,
                             start_sec, end_sec, content, content_fts,
-                            scene_type, is_visible, source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            scene_type, is_visible, source, speaker_label, speaker_name, speaker_sim,
+                            content_locked, speaker_locked
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         rows_to_insert,
                     )
@@ -248,6 +265,8 @@ def apply_delta(
                     actual_count = 0
 
                 v["line_count"] = actual_count
+                if not v.get("voiceprint_status"):
+                    v["voiceprint_status"] = "none"
                 conn.execute(upsert_sql, [v.get(c) for c in VIDEO_COLS])
                 parts_applied += 1
                 subtitles_inserted += actual_count

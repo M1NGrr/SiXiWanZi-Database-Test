@@ -11,17 +11,48 @@
     "梨安": { color: "#E38691", bg: "#FDF2F4", ink: "#9E3342", fan: "向心梨", official: "梨安不迷路" }
   };
 
-  const SCENE_LABELS = {
-    solo: "单播",
-    duo: "双播",
-    group: "团播",
-    special: "特别场次",
-    unknown: "未标注"
-  };
+  const ICON_MIC = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`;
+  const ICON_SCREEN = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
+
+  function formatSpeakerBadge(label, speakerName, sim, fallbackUpName, speakerLocked) {
+    const simText = speakerLocked
+      ? "（人工已校对）"
+      : (typeof sim === "number" && !Number.isNaN(sim)
+        ? `（声纹相似度 ${Math.round(sim * 100)}%）`
+        : "");
+    const resolvedName = (speakerName || "").trim() || (fallbackUpName || "").trim();
+    if (label === "host") {
+      const t = getTheme(resolvedName);
+      const display = resolvedName ? `${esc(resolvedName)}原声` : "主播原声";
+      return `<span class="badge badge-source-host" style="--src-color:${t.color};--src-bg:${t.bg};--src-ink:${t.ink};" title="${speakerLocked ? "人工校对" : "四成员声纹识别"}：${display}${simText}">${ICON_MIC}${display}</span>`;
+    }
+    if (label === "mixed") {
+      const display = resolvedName ? `${esc(resolvedName)}原声 · 含混音` : "主播原声 · 含混音";
+      return `<span class="badge badge-source-mixed" title="${speakerLocked ? "人工校对" : "四成员声纹识别"}：本句包含${resolvedName || "主播"}插嘴及外部音轨拼接${simText}">${ICON_MIC}${display}</span>`;
+    }
+    if (label === "external") {
+      return `<span class="badge badge-source-external" title="${speakerLocked ? "人工校对" : "四成员声纹识别"}：与四位主播均不匹配，可能来自视频、影视或游戏音轨${simText}">${ICON_SCREEN}主播无关音轨</span>`;
+    }
+    return "";
+  }
+
+  function formatCtxSourcePill(label, speakerName) {
+    const name = (speakerName || "").trim();
+    if (label === "host") {
+      const t = getTheme(name);
+      return `<span class="ctx-src ctx-src-host" style="--src-color:${t.color};--src-bg:${t.bg};--src-ink:${t.ink};">${esc(name || "主播")}</span>`;
+    }
+    if (label === "mixed") {
+      return `<span class="ctx-src ctx-src-mixed">${esc(name ? `${name}·混` : "混音")}</span>`;
+    }
+    if (label === "external") {
+      return `<span class="ctx-src ctx-src-external">无关音轨</span>`;
+    }
+    return "";
+  }
 
   const state = {
     selectedUps: new Set(),
-    selectedScenes: new Set(),
     currentPage: 1,
     totalPages: 0,
     totalHits: 0,
@@ -162,16 +193,6 @@
     });
   }
 
-  function renderSceneChips() {
-    const wrap = $("sceneStrip");
-    if (!wrap) return;
-    wrap.querySelectorAll(".scene-chip").forEach((btn) => {
-      const sc = btn.dataset.scene || "";
-      const isActive = sc === "" ? state.selectedScenes.size === 0 : state.selectedScenes.has(sc);
-      btn.classList.toggle("active", isActive);
-    });
-  }
-
   function toggleMember(upName, focusInput, exclusive) {
     if (!upName) {
       state.selectedUps.clear();
@@ -198,20 +219,6 @@
       if (focusInput) {
         $("qInput").focus();
       }
-    }
-  }
-
-  function toggleScene(sceneKey) {
-    if (!sceneKey) {
-      state.selectedScenes.clear();
-    } else if (state.selectedScenes.has(sceneKey)) {
-      state.selectedScenes.delete(sceneKey);
-    } else {
-      state.selectedScenes.add(sceneKey);
-    }
-    renderSceneChips();
-    if (hasActiveQueryCondition()) {
-      runSearch(1, false);
     }
   }
 
@@ -460,20 +467,22 @@
     if (state.selectedUps.size > 0) {
       params.set("up_name", Array.from(state.selectedUps).join(","));
     }
-    if (state.selectedScenes.size > 0) {
-      params.set("scene_type", Array.from(state.selectedScenes).join(","));
-    }
     const df = $("dateFrom").value;
     const dt = $("dateTo").value;
     const bv = $("bvidFilter").value.trim();
     const sort = $("sortFilter").value;
     const fuzzy = $("fuzzyToggle").checked;
+    const sourceEl = $("speakerSourceFilter");
+    const speakerSource = sourceEl ? sourceEl.value : "all";
 
     if (df) params.set("date_from", df);
     if (dt) params.set("date_to", dt);
     if (bv) params.set("bvid", bv);
     params.set("sort", sort);
     params.set("fuzzy", fuzzy ? "true" : "false");
+    if (speakerSource && speakerSource !== "all") {
+      params.set("speaker_source", speakerSource);
+    }
     params.set("limit", String(state.pageLimit));
     params.set("offset", String(offset));
 
@@ -519,14 +528,17 @@
 
       $("hitList").innerHTML = data.items.map((it) => {
         const t = getTheme(it.up_name);
+        const spkBadge = formatSpeakerBadge(it.speaker_label, it.speaker_name, it.speaker_sim, it.up_name, it.speaker_locked);
+        const cardMod = it.speaker_label === "external" ? " is-external" : "";
         return `
-          <article class="hit-card" style="--m-color:${t.color};--m-bg:${t.bg};--m-ink:${t.ink};">
+          <article class="hit-card${cardMod}" style="--m-color:${t.color};--m-bg:${t.bg};--m-ink:${t.ink};">
             <div class="hit-meta">
               <span class="badge badge-member">
                 <span class="color-dot" style="background:${t.color};"></span>
                 ${esc(it.up_name)}
               </span>
               <span class="badge badge-time">${esc(it.start_hms)} ~ ${esc(it.end_hms)}</span>
+              ${spkBadge}
               <span>${esc(it.pub_date)}</span>
               <span>${esc(it.bvid)} · P${it.page}</span>
             </div>
@@ -609,8 +621,9 @@
         return;
       }
       box.innerHTML = data.items.map((x) => `
-        <div class="ctx-row ${x.id === subId ? "is-hit" : ""}">
+        <div class="ctx-row ${x.id === subId ? "is-hit" : ""} ${x.speaker_label === "external" ? "is-external" : ""}">
           <span class="ctx-ts">${Number(x.start_sec).toFixed(1)}s</span>
+          ${formatCtxSourcePill(x.speaker_label, x.speaker_name)}
           <span>${esc(x.content)}</span>
         </div>
       `).join("");
@@ -692,11 +705,10 @@
     $("bvidFilter").value = "";
     $("sortFilter").value = "date_desc";
     $("fuzzyToggle").checked = true;
+    if ($("speakerSourceFilter")) $("speakerSourceFilter").value = "all";
     state.selectedUps.clear();
-    state.selectedScenes.clear();
     applyThemeAccent();
     renderMemberChips();
-    renderSceneChips();
     syncClearBtn();
     showLandingMode();
     refreshStats(true);
@@ -704,17 +716,9 @@
 
   async function init() {
     renderMemberChips();
-    renderSceneChips();
     renderLandingStatsAndCards();
     renderAuthorAndGithub();
     applyThemeAccent();
-
-    const sceneStripEl = $("sceneStrip");
-    if (sceneStripEl) {
-      sceneStripEl.querySelectorAll(".scene-chip").forEach((btn) => {
-        btn.addEventListener("click", () => toggleScene(btn.dataset.scene || ""));
-      });
-    }
 
     $("searchForm").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -743,7 +747,8 @@
       });
     }
 
-    ["dateFrom", "dateTo", "sortFilter", "pageSizeFilter", "fuzzyToggle"].forEach((id) => {
+    ["dateFrom", "dateTo", "sortFilter", "pageSizeFilter", "speakerSourceFilter", "fuzzyToggle"].forEach((id) => {
+      if (!$(id)) return;
       $(id).addEventListener("change", () => {
         if (hasActiveQueryCondition()) runSearch(1, false);
       });

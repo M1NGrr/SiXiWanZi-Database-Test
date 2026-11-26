@@ -18,21 +18,20 @@ from pydantic import BaseModel, Field
 
 from zhijiang_corpus.bilibili_client import BilibiliClient
 from zhijiang_corpus.clip_planner import plan_clip_job
-from zhijiang_corpus.config import VALID_SCENE_TYPES, load_config, save_cookie_to_env
+from zhijiang_corpus.config import load_config, save_cookie_to_env
 from zhijiang_corpus.db import CorpusDB
 from zhijiang_corpus.ingest import ingest_bvids, ingest_from_up
-from zhijiang_corpus.scene_tagger import run_scene_tagging
+from zhijiang_corpus.normalizer import (
+    append_literal_replace_rule,
+    preview_literal_replace_rule,
+    run_corpus_normalization,
+)
+from zhijiang_corpus.search import build_bilibili_jump_url, format_sec_hms
 
 
-class ScenePatchRequest(BaseModel):
+class VisibilityPatchRequest(BaseModel):
     page: Optional[int] = Field(default=None, description="为空则更新该 BV 号全部分 P")
-    scene_type: Optional[str] = Field(
-        default=None,
-        description=f"可选值: {', '.join(VALID_SCENE_TYPES)}",
-    )
-    lock: bool = Field(default=True, description="是否锁定标签避免自动初筛覆盖")
-    reason: str = Field(default="manual_admin", description="备注说明")
-    is_visible: Optional[int] = Field(default=None, description="1=可见，0=隐藏")
+    is_visible: int = Field(..., ge=0, le=1, description="1=可见，0=隐藏")
 
 
 class CookieSaveRequest(BaseModel):
@@ -40,12 +39,11 @@ class CookieSaveRequest(BaseModel):
 
 
 class IngestStartRequest(BaseModel):
-    target: str = Field(default="all", description="UP 简称（如 嘉然）、UID 或 all")
+    target: str = Field(default="all", description="UP 简称（如 沐霂）、UID 或 all")
     limit: int = Field(default=5, ge=0, le=5000, description="每位 UP 抓取条数，0 表示抓取该合集全部")
     since_date: Optional[str] = Field(default=None, description="起始日期 YYYY-MM-DD")
     until_date: Optional[str] = Field(default=None, description="截止日期 YYYY-MM-DD")
     bvids: List[str] = Field(default_factory=list, description="可选：直接指定若干 BV 号抓取")
-    auto_tag_scenes: bool = Field(default=True, description="抓取结束后自动执行轻量场景初筛")
     force: bool = Field(default=False, description="是否覆盖已入库分 P")
 
 
@@ -56,6 +54,41 @@ class ClipPlanRequest(BaseModel):
     pad_after_sec: float = Field(default=1.5, ge=0.0, le=30.0)
     merge_gap_sec: float = Field(default=3.0, ge=0.0, le=60.0)
     output_name: str = Field(default="zhijiang_compilation.mp4")
+
+
+class SubtitleEditRequest(BaseModel):
+    content: Optional[str] = Field(default=None, description="修订后的字幕正文（不传则保持不变）")
+    speaker_label: Optional[str] = Field(
+        default=None,
+        pattern="^(unknown|host|mixed|external)$",
+        description="修订后的声音来源标签：host | mixed | external | unknown",
+    )
+    speaker_name: Optional[str] = Field(
+        default=None,
+        description="修订后的成员名（沐霂/又一/恬豆/梨安），external/unknown 时自动清空",
+    )
+    note: str = Field(default="", max_length=300, description="可选校对备注")
+
+
+class BatchSpeakerEditRequest(BaseModel):
+    subtitle_ids: List[int] = Field(..., min_length=1, description="要批量修正声音来源的字幕 ID 列表")
+    speaker_label: str = Field(
+        ...,
+        pattern="^(unknown|host|mixed|external)$",
+        description="目标声音来源标签：host | mixed | external | unknown",
+    )
+    speaker_name: Optional[str] = Field(
+        default=None,
+        description="目标成员名（host/mixed 时必填或按单条 up_name 兜底）",
+    )
+    note: str = Field(default="", max_length=300, description="可选批量校对备注")
+
+
+class LiteralRuleRequest(BaseModel):
+    wrong_term: str = Field(..., min_length=1, max_length=60, description="ASR 高频误识别错词")
+    right_term: str = Field(..., min_length=1, max_length=60, description="规范目标词")
+    note: str = Field(default="", max_length=200, description="规则备注")
+    apply_corpus: bool = Field(default=True, description="写入规则后是否立即执行全库批量修复")
 
 
 def _normalize_cookie_input(raw: str) -> str:
@@ -210,11 +243,6 @@ def build_admin_router(db: CorpusDB) -> APIRouter:
                         total_pending_login += s.parts_pending_login
                         total_fail += s.parts_failed
 
-                if body.auto_tag_scenes and total_ok > 0:
-                    _append_log("正在执行轻量场景初筛...")
-                    tagged = run_scene_tagging(db, cfg, only_unknown=True, dry_run=False)
-                    _append_log(f"场景初筛完成，更新 {len(tagged)} 个分 P。")
-
                 summary_str = (
                     f"成功分P {total_ok}，新增字幕 {total_lines} 条，"
                     f"跳过 {total_skip}，待登录 {total_pending_login}，失败 {total_fail}"
@@ -240,32 +268,9 @@ def build_admin_router(db: CorpusDB) -> APIRouter:
         with ingest_lock:
             return dict(ingest_state)
 
-    @router.post("/scenes/tag", summary="触发轻量规则场景初筛")
-    def api_tag_scenes(only_unknown: bool = False) -> Dict[str, Any]:
-        cfg = load_config(db_path=db.db_path)
-        res = run_scene_tagging(db, cfg, only_unknown=only_unknown, dry_run=False)
-        skipped = sum(1 for r in res if r.skipped_locked)
-        return {"processed": len(res), "skipped_locked": skipped}
-
-    @router.patch("/videos/{bvid}/scene", summary="人工修正并锁定场景标签或可见性")
-    def patch_video_scene(bvid: str, body: ScenePatchRequest) -> Dict[str, Any]:
-        updated = 0
-        if body.scene_type is not None:
-            if body.scene_type not in VALID_SCENE_TYPES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"无效 scene_type，可选值: {VALID_SCENE_TYPES}",
-                )
-            updated += db.update_scene_type(
-                bvid,
-                body.page,
-                body.scene_type,
-                confidence=1.0,
-                reason=body.reason,
-                lock=body.lock,
-            )
-        if body.is_visible is not None:
-            updated += db.update_visibility(bvid, body.page, body.is_visible)
+    @router.patch("/videos/{bvid}/visibility", summary="设置视频分 P 可见性（1=可见，0=隐藏）")
+    def patch_video_visibility(bvid: str, body: VisibilityPatchRequest) -> Dict[str, Any]:
+        updated = db.update_visibility(bvid, body.page, body.is_visible)
         if updated == 0:
             raise HTTPException(status_code=404, detail=f"未找到视频记录: {bvid}")
         return {"status": "ok", "bvid": bvid, "page": body.page, "affected_rows": updated}
@@ -287,5 +292,136 @@ def build_admin_router(db: CorpusDB) -> APIRouter:
             merge_gap_sec=body.merge_gap_sec,
             output_name=body.output_name,
         )
+
+    @router.patch("/subtitles/{subtitle_id}", summary="人工校对单条字幕正文与/或声音来源")
+    def patch_subtitle(subtitle_id: int, body: SubtitleEditRequest) -> Dict[str, Any]:
+        if body.content is None and body.speaker_label is None:
+            raise HTTPException(status_code=400, detail="请至少修改字幕内容或声音来源之一")
+        try:
+            res = db.edit_subtitle(
+                subtitle_id,
+                content=body.content,
+                speaker_label=body.speaker_label,
+                speaker_name=body.speaker_name,
+                note=body.note,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        sub = res["subtitle"]
+        sub["start_hms"] = format_sec_hms(float(sub["start_sec"]))
+        sub["end_hms"] = format_sec_hms(float(sub["end_sec"]))
+        sub["jump_url"] = build_bilibili_jump_url(
+            str(sub["bvid"]), int(sub["page"]), float(sub["start_sec"])
+        )
+        return res
+
+    @router.post("/subtitles/batch-speaker", summary="批量修正多条字幕的声音来源并锁定")
+    def batch_patch_speaker(body: BatchSpeakerEditRequest) -> Dict[str, Any]:
+        try:
+            return db.batch_edit_speakers(
+                body.subtitle_ids,
+                speaker_label=body.speaker_label,
+                speaker_name=body.speaker_name,
+                note=body.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.get("/review/candidates", summary="获取集中校对队列（声纹灰色边界 / 混音 / 高分无关音轨 / 场次时间轴）")
+    def list_review_candidates(
+        mode: str = Query(
+            default="uncertain",
+            pattern="^(uncertain|mixed|external|timeline|locked)$",
+            description="uncertain=灰色边界与混音，mixed=仅含混音，external=高分无关音轨，timeline=按BV时间轴顺序，locked=已人工校对",
+        ),
+        up_name: Optional[str] = Query(default=None),
+        bvid: Optional[str] = Query(default=None),
+        page: Optional[int] = Query(default=None, ge=1),
+        sim_min: float = Query(default=0.40, ge=-1.0, le=1.0),
+        sim_max: float = Query(default=0.56, ge=-1.0, le=1.0),
+        start_sec: Optional[float] = Query(default=None, ge=0.0),
+        end_sec: Optional[float] = Query(default=None, ge=0.0),
+        include_locked: bool = Query(default=False),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+    ) -> Dict[str, Any]:
+        try:
+            data = db.list_review_candidates(
+                mode=mode,
+                up_name=up_name,
+                bvid=bvid,
+                page=page,
+                sim_min=sim_min,
+                sim_max=sim_max,
+                start_sec=start_sec,
+                end_sec=end_sec,
+                include_locked=include_locked,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        for it in data["items"]:
+            st = float(it["start_sec"])
+            ed = float(it["end_sec"])
+            it["start_hms"] = format_sec_hms(st)
+            it["end_hms"] = format_sec_hms(ed)
+            it["jump_url"] = build_bilibili_jump_url(str(it["bvid"]), int(it["page"]), st)
+        return data
+
+    @router.get("/edits", summary="查询人工校对审计历史")
+    def list_edits(
+        bvid: Optional[str] = Query(default=None),
+        subtitle_id: Optional[int] = Query(default=None),
+        edit_type: Optional[str] = Query(default=None, pattern="^(text|speaker|both|revert)$"),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+    ) -> Dict[str, Any]:
+        data = db.list_subtitle_edits(
+            bvid=bvid,
+            subtitle_id=subtitle_id,
+            edit_type=edit_type,
+            limit=limit,
+            offset=offset,
+        )
+        for it in data["items"]:
+            st = float(it["start_sec"])
+            it["start_hms"] = format_sec_hms(st)
+            it["jump_url"] = build_bilibili_jump_url(str(it["bvid"]), int(it["page"]), st)
+        return data
+
+    @router.post("/edits/{edit_id}/revert", summary="一键回滚某次人工校对")
+    def revert_edit(edit_id: int) -> Dict[str, Any]:
+        try:
+            return db.revert_subtitle_edit(edit_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.post("/rules/preview-add", summary="预览新增高频错词全局替换规则对当前语料库的影响")
+    def preview_add_rule(body: LiteralRuleRequest) -> Dict[str, Any]:
+        try:
+            return preview_literal_replace_rule(db, body.wrong_term, body.right_term)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.post("/rules/apply-add", summary="沉淀高频错词到 config/correction_rules.json 并可选全库批量修复")
+    def apply_add_rule(body: LiteralRuleRequest) -> Dict[str, Any]:
+        try:
+            rule_res = append_literal_replace_rule(
+                body.wrong_term, body.right_term, note=body.note
+            )
+            norm_res = (
+                run_corpus_normalization(db, dry_run=False)
+                if body.apply_corpus
+                else None
+            )
+            return {"status": "ok", "rule": rule_res, "normalization": norm_res}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     return router

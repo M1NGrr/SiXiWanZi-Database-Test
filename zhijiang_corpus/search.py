@@ -15,9 +15,10 @@ class SearchQuery:
     up_names: Optional[Sequence[str]] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
-    scene_types: Optional[Sequence[str]] = None
     bvid: Optional[str] = None
     include_hidden: bool = False
+    host_only: bool = False
+    speaker_source: Optional[str] = None  # all | host | host_verified | external
     fuzzy: bool = True
     context_lines: int = 0
     clip_pad_before: float = 1.5
@@ -78,6 +79,16 @@ class SearchService:
         if not req.include_hidden:
             where_clauses.append("s.is_visible = 1")
 
+        eff_source = (req.speaker_source or "").strip().lower()
+        if not eff_source and req.host_only:
+            eff_source = "host"
+        if eff_source == "host":
+            where_clauses.append("s.speaker_label != 'external'")
+        elif eff_source == "host_verified":
+            where_clauses.append("s.speaker_label IN ('host', 'mixed')")
+        elif eff_source == "external":
+            where_clauses.append("s.speaker_label = 'external'")
+
         if req.up_names:
             cleaned_ups = [u.strip() for u in req.up_names if u and u.strip()]
             if cleaned_ups:
@@ -92,13 +103,6 @@ class SearchService:
         if req.date_to:
             where_clauses.append("s.pub_date <= ?")
             params.append(req.date_to.strip())
-
-        if req.scene_types:
-            cleaned_scenes = [sc.strip() for sc in req.scene_types if sc and sc.strip()]
-            if cleaned_scenes:
-                placeholders = ",".join("?" for _ in cleaned_scenes)
-                where_clauses.append(f"s.scene_type IN ({placeholders})")
-                params.extend(cleaned_scenes)
 
         if req.bvid:
             where_clauses.append("s.bvid = ?")
@@ -152,6 +156,11 @@ class SearchService:
                 s.scene_type,
                 s.is_visible,
                 s.source,
+                s.speaker_label,
+                s.speaker_name,
+                s.speaker_sim,
+                s.content_locked,
+                s.speaker_locked,
                 COALESCE(v.title, '') AS title,
                 COALESCE(v.part_title, '') AS part_title,
                 COALESCE(v.duration_sec, 0) AS video_duration_sec
@@ -188,6 +197,11 @@ class SearchService:
                     "content": r["content"],
                     "scene_type": r["scene_type"],
                     "is_visible": int(r["is_visible"]),
+                    "speaker_label": str(r["speaker_label"] or "unknown"),
+                    "speaker_name": str(r["speaker_name"] or ""),
+                    "speaker_sim": float(r["speaker_sim"]) if r["speaker_sim"] is not None else None,
+                    "content_locked": int(r["content_locked"] or 0),
+                    "speaker_locked": int(r["speaker_locked"] or 0),
                     "title": r["title"],
                     "part_title": r["part_title"],
                     "video_url": build_bilibili_video_url(r["bvid"], int(r["page"])),
@@ -234,9 +248,10 @@ class SearchService:
                 "up_names": list(req.up_names) if req.up_names else None,
                 "date_from": req.date_from,
                 "date_to": req.date_to,
-                "scene_types": list(req.scene_types) if req.scene_types else None,
                 "bvid": req.bvid,
                 "include_hidden": req.include_hidden,
+                "host_only": req.host_only or eff_source == "host",
+                "speaker_source": eff_source or "all",
             },
             "pagination": {
                 "total": total,
@@ -253,7 +268,6 @@ class SearchService:
         self,
         *,
         up_name: Optional[str] = None,
-        scene_type: Optional[str] = None,
         status: Optional[str] = None,
         include_hidden: bool = False,
         limit: int = 50,
@@ -266,9 +280,6 @@ class SearchService:
         if up_name:
             clauses.append("up_name = ?")
             params.append(up_name.strip())
-        if scene_type:
-            clauses.append("scene_type = ?")
-            params.append(scene_type.strip())
         if status:
             clauses.append("subtitle_status = ?")
             params.append(status.strip())
@@ -282,7 +293,7 @@ class SearchService:
                 f"""
                 SELECT bvid, page, up_name, title, part_title, pub_date,
                        duration_sec, subtitle_lan, subtitle_status, line_count,
-                       scene_type, scene_confidence, scene_locked, is_visible
+                       voiceprint_status, is_visible
                   FROM videos
                 {where_sql}
                  ORDER BY pub_date DESC, bvid DESC, page ASC
@@ -324,7 +335,9 @@ class SearchService:
             ).fetchone()
             rows = conn.execute(
                 f"""
-                SELECT id, start_sec, end_sec, content, scene_type, is_visible
+                SELECT id, start_sec, end_sec, content, scene_type, is_visible,
+                       speaker_label, speaker_name, speaker_sim,
+                       content_locked, speaker_locked
                   FROM subtitles
                  WHERE {' AND '.join(clauses)}
                  ORDER BY start_sec ASC, id ASC

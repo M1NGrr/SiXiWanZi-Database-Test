@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>四禧丸子直播语料库 · 本地后端调试台</title>
+  <title>四禧丸子直播语料库 · 本地后台校对与运维台</title>
   <style>
     :root {
       --bg: #f4f6f9;
@@ -17,6 +17,8 @@
       --ok-soft: #ecfdf5;
       --warn: #d97706;
       --warn-soft: #fffbeb;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
       --purple: #6d28d9;
       --purple-soft: #f5f3ff;
     }
@@ -27,42 +29,49 @@
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     }
-    header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30; }
     .header-inner {
-      max-width: 1180px; margin: 0 auto; padding: 14px 20px;
+      max-width: 1240px; margin: 0 auto; padding: 13px 20px;
       display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
     }
-    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
     .brand h1 { margin: 0; font-size: 18px; font-weight: 700; }
     .brand span { font-size: 12px; color: var(--muted); }
+    .brand a { color: var(--primary); text-decoration: none; }
+    .brand a:hover { text-decoration: underline; }
     .stat-pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
     .pill { padding: 4px 10px; border-radius: 999px; background: #f3f4f6; color: #374151; font-weight: 500; }
     .pill.ok { background: var(--ok-soft); color: var(--ok); }
     .pill.warn { background: var(--warn-soft); color: var(--warn); cursor: pointer; }
-    .tabs { max-width: 1180px; margin: 0 auto; padding: 0 20px; display: flex; gap: 4px; }
+    .tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 4px; flex-wrap: wrap; }
     .tab-btn {
       background: transparent; border: none; border-bottom: 2px solid transparent;
-      padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
+      padding: 10px 15px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
     }
     .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-    .container { max-width: 1180px; margin: 18px auto 56px; padding: 0 20px; }
+    .container { max-width: 1240px; margin: 18px auto 72px; padding: 0 20px; }
     .panel {
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-      padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      padding: 16px 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
     .search-bar { display: flex; gap: 10px; flex-wrap: wrap; }
     .search-bar input[type="text"] {
-      flex: 1; min-width: 260px; padding: 11px 14px; font-size: 15px;
+      flex: 1; min-width: 260px; padding: 10px 14px; font-size: 15px;
       border: 1px solid #d1d5db; border-radius: 8px; outline: none;
     }
     .search-bar input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
     button.btn {
-      padding: 9px 16px; border-radius: 8px; border: 1px solid var(--primary);
-      background: var(--primary); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+      padding: 8px 14px; border-radius: 8px; border: 1px solid var(--primary);
+      background: var(--primary); color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer;
     }
     button.btn:hover { background: #1d4ed8; }
     button.btn.sec { background: #fff; color: #374151; border-color: #d1d5db; font-weight: 500; }
     button.btn.sec:hover { background: #f9fafb; }
+    button.btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+    button.btn.ok:hover { background: #047857; }
+    button.btn.danger { background: #fff; color: var(--danger); border-color: #fecaca; }
+    button.btn.danger:hover { background: var(--danger-soft); }
+    button.btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
     button.btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
     .chip {
@@ -74,43 +83,92 @@
       display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center;
       font-size: 13px; color: var(--muted);
     }
-    .filters-row select, .filters-row input {
-      padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+    .filters-row select, .filters-row input[type="text"], .filters-row input[type="date"], .filters-row input[type="number"] {
+      padding: 6px 9px; border: 1px solid #d1d5db; border-radius: 6px;
       font-size: 13px; background: #fff; color: var(--text);
     }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 12px; font-size: 13px; color: var(--muted); }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; gap: 8px; }
     .card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-      padding: 14px 16px; margin-bottom: 10px;
+      padding: 13px 16px; margin-bottom: 10px; transition: border-color .15s, background .15s;
     }
-    .card-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
-    .badge { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; }
+    .card.is-selected { border-color: var(--primary); background: #f8fbff; }
+    .card.is-external { border-left: 4px solid #cbd5e1; }
+    .card-meta { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+    .badge { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
     .badge.up { background: var(--primary-soft); color: var(--primary); }
-    .badge.scene { background: var(--purple-soft); color: var(--purple); }
     .badge.time { background: #f3f4f6; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .sub-text { font-size: 16px; line-height: 1.65; color: #0f172a; }
+    .badge.src-host { background: var(--src-bg, #eff6ff); color: var(--src-ink, #1d4ed8); border: 1px solid var(--src-color, #bfdbfe); }
+    .badge.src-mixed { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+    .badge.src-external { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .badge.src-unknown { background: #f9fafb; color: #6b7280; border: 1px dashed #d1d5db; }
+    .badge.lock { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+    .badge.sim { background: #f8fafc; color: #475569; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid #e2e8f0; }
+    .sub-text { font-size: 16px; line-height: 1.65; color: #0f172a; word-break: break-word; }
     mark { background: #fef08a; color: #111827; padding: 0 2px; border-radius: 3px; }
     .card-foot {
-      margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: space-between;
+      margin-top: 9px; display: flex; flex-wrap: wrap; justify-content: space-between;
       align-items: center; gap: 8px; font-size: 12px; color: var(--muted);
     }
-    .card-actions { display: flex; gap: 10px; align-items: center; }
+    .card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .link-btn {
       background: none; border: none; color: var(--primary); cursor: pointer;
       padding: 2px 4px; font-size: 12.5px; text-decoration: none;
     }
     .link-btn:hover { text-decoration: underline; }
+    .quick-spk-bar {
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+      margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb;
+      font-size: 12px; color: var(--muted);
+    }
+    .qspk-btn {
+      padding: 3px 8px; border-radius: 999px; border: 1px solid #d1d5db;
+      background: #fff; color: #374151; font-size: 11.5px; cursor: pointer; font-weight: 500;
+    }
+    .qspk-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .qspk-btn.is-cur { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+    .edit-box {
+      margin-top: 10px; padding: 12px; background: #f8fafc;
+      border: 1px solid #cbd5e1; border-radius: 8px;
+    }
+    .edit-box textarea {
+      width: 100%; min-height: 58px; padding: 8px 10px; font-size: 14.5px; line-height: 1.5;
+      border: 1px solid #cbd5e1; border-radius: 6px; font-family: inherit; resize: vertical;
+    }
+    .edit-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; font-size: 12.5px; }
+    .edit-row select, .edit-row input {
+      padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12.5px; background: #fff;
+    }
     .ctx-box {
       margin-top: 10px; padding: 10px 12px; background: #f8fafc;
       border-left: 3px solid #cbd5e1; border-radius: 6px; font-size: 13px; line-height: 1.6;
     }
-    .ctx-line { display: flex; gap: 10px; padding: 2px 0; }
-    .ctx-line.hit { font-weight: 600; color: var(--primary); }
-    .ctx-ts { color: var(--muted); font-family: monospace; min-width: 68px; }
-    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .ctx-toolbar {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: var(--muted);
+    }
+    .ctx-line {
+      display: flex; gap: 8px; padding: 4px 6px; align-items: center; border-radius: 5px;
+    }
+    .ctx-line:hover { background: #eef2f7; }
+    .ctx-line.hit { font-weight: 600; color: var(--primary); background: #eff6ff; }
+    .ctx-ts { color: var(--muted); font-family: monospace; min-width: 62px; font-size: 12px; }
+    .ctx-content { flex: 1; min-width: 0; }
+    .batch-bar {
+      position: sticky; top: 96px; z-index: 20;
+      background: #0f172a; color: #f8fafc; border-radius: 10px;
+      padding: 10px 14px; margin-bottom: 12px;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+    }
+    .batch-bar .qspk-btn { background: #1e293b; color: #f8fafc; border-color: #475569; }
+    .batch-bar .qspk-btn:hover { background: #334155; border-color: #94a3b8; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
     th { background: #f9fafb; font-weight: 600; color: #374151; }
+    .diff-old { color: #b91c1c; background: #fef2f2; padding: 1px 5px; border-radius: 4px; text-decoration: line-through; }
+    .diff-new { color: #047857; background: #ecfdf5; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
     .log-box {
       background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px; line-height: 1.55; padding: 12px; border-radius: 8px;
@@ -120,14 +178,21 @@
     .qr-wrap img { width: 168px; height: 168px; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: #fff; }
     .hidden { display: none !important; }
     .empty { text-align: center; padding: 36px 16px; color: var(--muted); }
+    .toast {
+      position: fixed; right: 20px; bottom: 20px; z-index: 99;
+      background: #0f172a; color: #fff; padding: 10px 16px; border-radius: 8px;
+      font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+      transition: opacity .2s;
+    }
+    .toast.err { background: var(--danger); }
   </style>
 </head>
 <body>
 <header>
   <div class="header-inner">
     <div class="brand">
-      <h1>四禧丸子直播语料库 · 本地后端运维台</h1>
-      <span><a href="/" target="_blank">打开公开前端页 (/) ↗</a> · <a href="/docs" target="_blank">OpenAPI 文档</a></span>
+      <h1>四禧丸子直播语料库 · 本地后台校对与运维台</h1>
+      <span>仅本地管理模式可用（公网部署自动 404） · <a href="/" target="_blank">打开公开首页 (/) ↗</a> · <a href="/docs" target="_blank">OpenAPI</a></span>
     </div>
     <div class="stat-pills">
       <span class="pill" id="statVideos">场次分P: -</span>
@@ -137,17 +202,21 @@
     </div>
   </div>
   <div class="tabs">
-    <button class="tab-btn active" id="tab-search" onclick="switchTab('search')">字幕检索验证</button>
+    <button class="tab-btn active" id="tab-search" onclick="switchTab('search')">字幕检索与纠错</button>
+    <button class="tab-btn" id="tab-review" onclick="switchTab('review')">集中校对台（声纹边界/时间轴）</button>
+    <button class="tab-btn" id="tab-rules" onclick="switchTab('rules')">错词规则沉淀</button>
+    <button class="tab-btn" id="tab-edits" onclick="switchTab('edits')">校对历史与回滚</button>
     <button class="tab-btn" id="tab-videos" onclick="switchTab('videos')">已入库场次</button>
-    <button class="tab-btn" id="tab-ingest" onclick="switchTab('ingest')">批量抓取与本地运维</button>
+    <button class="tab-btn" id="tab-ingest" onclick="switchTab('ingest')">抓取与运维</button>
   </div>
 </header>
 
 <main class="container">
+  <!-- 1. 字幕检索与单条/上下文校对 -->
   <section id="view-search">
     <div class="panel">
       <div class="search-bar">
-        <input id="qInput" type="text" placeholder="搜台词、搜热梗、搜名场面… 如：黑话 / 爆 / 羞死了 / 四禧丸子（空格分隔多词）" />
+        <input id="qInput" type="text" placeholder="搜台词、搜错词、搜热梗… 如：黑话 / 四禧丸子（空格分隔多词）" />
         <button class="btn" onclick="runSearch(1)">搜索字幕</button>
         <button class="btn sec" onclick="resetFilters()">重置</button>
       </div>
@@ -160,17 +229,14 @@
         <button class="chip" data-up="梨安" style="border-color:#e38691;color:#9e3342;" onclick="toggleUp(this)">梨安</button>
       </div>
       <div class="filters-row">
-        <label>场景：
-          <select id="sceneFilter" onchange="if(hasQuery()) runSearch(1)">
-            <option value="">全部场景</option>
-            <option value="solo">单播 (solo)</option>
-            <option value="duo">双播 (duo)</option>
-            <option value="group">团播 (group)</option>
-            <option value="special">特别场次 (special)</option>
-            <option value="unknown">未标注 (unknown)</option>
+        <label>声音来源：
+          <select id="speakerSourceFilter" onchange="if(hasQuery()) runSearch(1)">
+            <option value="all">全部来源</option>
+            <option value="host">仅主播原声</option>
+            <option value="host_verified">仅已识别主播原声</option>
+            <option value="external">仅主播无关音轨</option>
           </select>
         </label>
-        <span style="font-size:12px;color:var(--muted);">标签搜索未必准确，请酌情使用</span>
         <label>起始日期：<input id="dateFrom" type="date" onchange="if(hasQuery()) runSearch(1)" /></label>
         <label>截止日期：<input id="dateTo" type="date" onchange="if(hasQuery()) runSearch(1)" /></label>
         <label>BV 号：<input id="bvidFilter" type="text" placeholder="如 BV1..." style="width:140px;" /></label>
@@ -189,13 +255,13 @@
     </div>
 
     <div class="toolbar">
-      <div id="searchSummary">请输入关键词或指定 BV 号 / 日期范围开始检索（默认不展示全量字幕）</div>
+      <div id="searchSummary">请输入关键词或指定 BV 号 / 日期范围开始检索与校对（支持原地改字幕、一键切声音来源与上下文批量纠错）</div>
       <div id="debugPagerTop" style="display:flex;gap:6px;align-items:center;"></div>
     </div>
     <div id="searchResults">
       <div class="panel empty">
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">请输入关键词开始检索（默认不展示全量字幕，避免卡顿）</div>
-        <div>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与发言人不对应。</div>
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">本地后台校对入口（与公开首页 / 严格隔离）</div>
+        <div>输入关键词或 BV 号即可原地修正字幕错词与声音来源；如需批量检查声纹边界，可切换上方「集中校对台」。</div>
       </div>
     </div>
     <div class="toolbar" style="justify-content:flex-end;">
@@ -203,6 +269,141 @@
     </div>
   </section>
 
+  <!-- 2. 集中校对台（声纹边界 & 时间轴批量校对） -->
+  <section id="view-review" class="hidden">
+    <div class="panel">
+      <div class="filters-row" style="margin-top:0;">
+        <label>校对模式：
+          <select id="rvMode" onchange="onReviewModeChange()">
+            <option value="uncertain">声纹灰色边界 + 混音（最易误判优先）</option>
+            <option value="mixed">仅含混音 (mixed)</option>
+            <option value="external">高分无关音轨（防漏判主播原声）</option>
+            <option value="timeline">按场次时间轴顺序校对（需填 BV 号）</option>
+            <option value="locked">已人工校对锁定记录</option>
+          </select>
+        </label>
+        <label>UP 主：
+          <select id="rvUp" onchange="loadReviewQueue(1)">
+            <option value="">全部</option>
+            <option value="沐霂">沐霂</option>
+            <option value="又一">又一</option>
+            <option value="恬豆">恬豆</option>
+            <option value="梨安">梨安</option>
+          </select>
+        </label>
+        <label>BV 号：<input id="rvBvid" type="text" placeholder="如 BV1..." style="width:140px;" /></label>
+        <label>分 P：<input id="rvPage" type="number" min="1" placeholder="全部" style="width:72px;" /></label>
+        <span id="rvSimRangeWrap" style="display:inline-flex;gap:6px;align-items:center;">
+          <label>相似度：<input id="rvSimMin" type="number" step="0.01" value="0.40" style="width:68px;" /></label>
+          <span>~</span>
+          <input id="rvSimMax" type="number" step="0.01" value="0.56" style="width:68px;" />
+        </span>
+        <span id="rvTimeRangeWrap" class="hidden" style="display:inline-flex;gap:6px;align-items:center;">
+          <label>起止秒：<input id="rvStartSec" type="number" min="0" step="1" placeholder="0" style="width:78px;" /></label>
+          <span>~</span>
+          <input id="rvEndSec" type="number" min="0" step="1" placeholder="不限" style="width:78px;" />
+        </span>
+        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+          <input id="rvIncludeLocked" type="checkbox" onchange="loadReviewQueue(1)" />
+          包含已人工锁定
+        </label>
+        <button class="btn" onclick="loadReviewQueue(1)">加载队列</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;">
+        提示：勾选条目时按住 <b>Shift</b> 可连续区间多选，配合下方黑色悬浮条即可一键把整段 Re/电影/团播台词批量修正声音来源（自动锁定，重跑声纹不覆盖）。
+      </div>
+    </div>
+
+    <div id="rvBatchBar" class="batch-bar hidden">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <b id="rvSelectedCount">已选 0 条</b>
+        <button class="qspk-btn" onclick="selectAllReview(true)">全选本页</button>
+        <button class="qspk-btn" onclick="selectAllReview(false)">清空选择</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#94a3b8;">批量改为：</span>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('host', '沐霂')">沐霂原声</button>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('host', '又一')">又一原声</button>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('host', '恬豆')">恬豆原声</button>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('host', '梨安')">梨安原声</button>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('mixed', '')">含混音(按场次UP)</button>
+        <button class="qspk-btn" onclick="batchSetReviewSpeaker('external', '')">主播无关音轨</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div id="rvSummary">点击「加载队列」开始集中校对</div>
+      <div id="rvPagerTop" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+    <div id="rvList"></div>
+    <div class="toolbar" style="justify-content:flex-end;">
+      <div id="rvPagerBottom" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+  </section>
+
+  <!-- 3. 高频错词全局规则沉淀 -->
+  <section id="view-rules" class="hidden">
+    <div class="panel">
+      <h3 style="margin:0 0 6px;">高频 ASR 错词沉淀为全局规则（点修 → 面修）</h3>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+        发现专有名词、黑话或成员昵称被系统性听错时（例如 <code>甜豆包 → 恬豆包</code>），可先预览全库影响条数，再一键写入 <code>config/correction_rules.json</code> 并批量修复存量字幕（自动跳过已人工锁定的条目）。
+      </div>
+      <div class="filters-row" style="margin-top:0;">
+        <label>误识别错词：<input id="ruleWrong" type="text" placeholder="如：甜豆包" style="width:180px;" /></label>
+        <label>规范正确词：<input id="ruleRight" type="text" placeholder="如：恬豆包" style="width:180px;" /></label>
+        <label>规则备注：<input id="ruleNote" type="text" placeholder="可选说明" style="width:220px;" /></label>
+      </div>
+      <div class="filters-row">
+        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+          <input id="ruleApplyCorpus" type="checkbox" checked />
+          保存规则后立即批量修复存量数据库
+        </label>
+        <button class="btn sec" onclick="previewGlobalRule()">1. 预览全库命中</button>
+        <button class="btn ok" onclick="applyGlobalRule()">2. 写入规则并生效</button>
+      </div>
+    </div>
+    <div id="rulePreviewBox" class="panel hidden"></div>
+  </section>
+
+  <!-- 4. 人工校对历史与一键回滚 -->
+  <section id="view-edits" class="hidden">
+    <div class="panel">
+      <div class="filters-row" style="margin-top:0;">
+        <label>按 BV 号筛选：<input id="edBvid" type="text" placeholder="留空查全部" style="width:150px;" /></label>
+        <label>修改类型：
+          <select id="edType" onchange="loadEdits(1)">
+            <option value="">全部</option>
+            <option value="text">仅改字幕</option>
+            <option value="speaker">仅改声音来源</option>
+            <option value="both">同时修改</option>
+            <option value="revert">回滚记录</option>
+          </select>
+        </label>
+        <button class="btn" onclick="loadEdits(1)">刷新日志</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div id="edSummary">加载校对历史...</div>
+      <div id="edPager" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+    <div class="panel" style="padding:0;overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px;">#ID</th>
+            <th style="width:130px;">时间 / 类型</th>
+            <th style="width:160px;">场次 / 位置</th>
+            <th>字幕文本变更</th>
+            <th style="width:200px;">声音来源变更</th>
+            <th style="width:130px;">备注 / 操作</th>
+          </tr>
+        </thead>
+        <tbody id="editsTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. 已入库场次 -->
   <section id="view-videos" class="hidden">
     <div class="panel">
       <div class="filters-row" style="margin-top:0;">
@@ -215,16 +416,6 @@
             <option value="梨安">梨安</option>
           </select>
         </label>
-        <label>场景：
-          <select id="vSceneFilter" onchange="loadVideos()">
-            <option value="">全部</option>
-            <option value="solo">solo</option>
-            <option value="duo">duo</option>
-            <option value="group">group</option>
-            <option value="special">special</option>
-            <option value="unknown">unknown</option>
-          </select>
-        </label>
         <label>状态：
           <select id="vStatusFilter" onchange="loadVideos()">
             <option value="">全部</option>
@@ -234,7 +425,6 @@
           </select>
         </label>
         <button class="btn sec" onclick="loadVideos()">刷新列表</button>
-        <button class="btn sec" onclick="triggerSceneTag()">运行轻量场景初筛</button>
         <button class="btn sec" onclick="triggerOptimizeDb()">压缩优化索引</button>
       </div>
     </div>
@@ -247,8 +437,8 @@
             <th>BV 号 / 分P</th>
             <th>场次标题</th>
             <th>字幕条数</th>
-            <th>状态</th>
-            <th>场景标签</th>
+            <th>字幕状态</th>
+            <th>声纹识别</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -257,6 +447,7 @@
     </div>
   </section>
 
+  <!-- 6. 抓取与本地运维 -->
   <section id="view-ingest" class="hidden">
     <div class="grid-2">
       <div class="panel">
@@ -319,25 +510,51 @@
   </section>
 </main>
 
+<div id="toast" class="toast hidden"></div>
+
 <script>
+const MEMBERS = ['沐霂', '又一', '恬豆', '梨安'];
+const MEMBER_THEMES = {
+  '沐霂': { color: '#A1D29A', bg: '#F2F9F1', ink: '#2E6A29' },
+  '又一': { color: '#E3BA09', bg: '#FDF9E6', ink: '#8A6A00' },
+  '恬豆': { color: '#A7C9D3', bg: '#F1F7F9', ink: '#2C6475' },
+  '梨安': { color: '#E38691', bg: '#FDF2F4', ink: '#9E3342' }
+};
+
 let selectedUps = new Set();
 let currentPage = 1;
 let totalPages = 0;
 const pageLimit = 20;
+let lastSearchItems = new Map();
+let lastSearchQuery = '';
+let lastFuzzyExpanded = null;
+
+let rvPageNum = 1;
+let rvTotalPages = 0;
+const rvLimit = 40;
+let rvItems = [];
+let rvSelectedIds = new Set();
+let rvLastCheckedIdx = -1;
+
+let ctxCache = new Map();
+let ctxSelectedMap = new Map(); // hostSubId -> Set(subId)
+let ctxLastIdxMap = new Map();
+
+let edPageNum = 1;
 let qrTimer = null;
 let ingestTimer = null;
+let toastTimer = null;
 
-function hasQuery() {
-  return Boolean(
-    document.getElementById('qInput').value.trim() ||
-    document.getElementById('bvidFilter').value.trim() ||
-    document.getElementById('dateFrom').value ||
-    document.getElementById('dateTo').value
-  );
+function showToast(msg, isErr) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast' + (isErr ? ' err' : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
 }
 
 function esc(s) {
-  return (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
 function highlight(text, q, expandedMap) {
@@ -351,9 +568,177 @@ function highlight(text, q, expandedMap) {
   const sorted = Array.from(terms).sort((a, b) => b.length - a.length);
   for (const t of sorted) {
     const safe = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(safe, 'gi'), m => `<mark>${m}</mark>`);
+    if (safe) out = out.replace(new RegExp(safe, 'gi'), m => `<mark>${m}</mark>`);
   }
   return out;
+}
+
+function formatSpeakerLabelText(label, name, fallbackUp) {
+  const resolved = (name || '').trim() || (fallbackUp || '').trim();
+  if (label === 'host') return `${resolved || '主播'}原声`;
+  if (label === 'mixed') return `${resolved || '主播'}原声 · 含混音`;
+  if (label === 'external') return '主播无关音轨';
+  return '未识别来源';
+}
+
+function renderSpeakerBadge(item) {
+  const label = item.speaker_label || 'unknown';
+  const name = (item.speaker_name || '').trim() || (item.up_name || '').trim();
+  const locked = Number(item.speaker_locked || 0) === 1;
+  const sim = typeof item.speaker_sim === 'number' && !Number.isNaN(item.speaker_sim)
+    ? `${Math.round(item.speaker_sim * 100)}%`
+    : '';
+  let badgeHtml = '';
+  if (label === 'host') {
+    const t = MEMBER_THEMES[name] || { color: '#bfdbfe', bg: '#eff6ff', ink: '#1d4ed8' };
+    badgeHtml = `<span class="badge src-host" style="--src-color:${t.color};--src-bg:${t.bg};--src-ink:${t.ink};">${esc(name || '主播')}原声</span>`;
+  } else if (label === 'mixed') {
+    badgeHtml = `<span class="badge src-mixed">${esc(name ? name + '原声 · 混音' : '含混音')}</span>`;
+  } else if (label === 'external') {
+    badgeHtml = `<span class="badge src-external">主播无关音轨</span>`;
+  } else {
+    badgeHtml = `<span class="badge src-unknown">未识别来源</span>`;
+  }
+  const simHtml = sim ? `<span class="badge sim" title="CAM++ 原始声纹相似度">sim ${sim}</span>` : '';
+  const lockHtml = locked ? `<span class="badge lock" title="已人工校对锁定，重跑声纹不覆盖">✓ 来源已锁定</span>` : '';
+  const textLockHtml = Number(item.content_locked || 0) === 1
+    ? `<span class="badge lock" title="字幕正文已人工校对锁定，规则清洗不覆盖">✓ 正文已锁定</span>`
+    : '';
+  return badgeHtml + simHtml + lockHtml + textLockHtml;
+}
+
+function renderQuickSpeakerButtons(item, scope) {
+  const curL = item.speaker_label || 'unknown';
+  const curN = (item.speaker_name || '').trim();
+  const btns = MEMBERS.map(m => {
+    const isCur = curL === 'host' && curN === m;
+    return `<button type="button" class="qspk-btn ${isCur ? 'is-cur' : ''}" onclick="quickSetSpeaker(${item.id}, 'host', '${m}', '${scope}')">${m}原声</button>`;
+  });
+  const mixTarget = curN || item.up_name || '沐霂';
+  btns.push(`<button type="button" class="qspk-btn ${curL === 'mixed' ? 'is-cur' : ''}" onclick="quickSetSpeaker(${item.id}, 'mixed', '${esc(mixTarget)}', '${scope}')">含混音</button>`);
+  btns.push(`<button type="button" class="qspk-btn ${curL === 'external' ? 'is-cur' : ''}" onclick="quickSetSpeaker(${item.id}, 'external', '', '${scope}')">无关音轨</button>`);
+  return `<div class="quick-spk-bar"><span>一键改来源：</span>${btns.join('')}</div>`;
+}
+
+function renderInlineEditorHtml(item, scope) {
+  const spkLabel = item.speaker_label || 'unknown';
+  const spkName = item.speaker_name || item.up_name || '沐霂';
+  const memberOpts = MEMBERS.map(m => `<option value="${m}" ${spkName === m ? 'selected' : ''}>${m}</option>`).join('');
+  return `
+    <div class="edit-box hidden" id="edit-${scope}-${item.id}">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:5px;">
+        人工修订字幕正文与声音来源（保存后自动刷新 FTS5 检索索引并加锁，防止后续自动化覆盖）：
+      </div>
+      <textarea id="edit-text-${scope}-${item.id}">${esc(item.content)}</textarea>
+      <div class="edit-row">
+        <label>声音来源：
+          <select id="edit-label-${scope}-${item.id}" onchange="toggleEditMemberSelect('${scope}', ${item.id})">
+            <option value="host" ${spkLabel === 'host' ? 'selected' : ''}>主播原声 (host)</option>
+            <option value="mixed" ${spkLabel === 'mixed' ? 'selected' : ''}>含混音 (mixed)</option>
+            <option value="external" ${spkLabel === 'external' ? 'selected' : ''}>主播无关音轨 (external)</option>
+            <option value="unknown" ${spkLabel === 'unknown' ? 'selected' : ''}>未识别 (unknown)</option>
+          </select>
+        </label>
+        <label id="edit-member-wrap-${scope}-${item.id}" class="${(spkLabel === 'external' || spkLabel === 'unknown') ? 'hidden' : ''}">成员：
+          <select id="edit-name-${scope}-${item.id}">${memberOpts}</select>
+        </label>
+        <label style="flex:1;min-width:160px;">备注：
+          <input id="edit-note-${scope}-${item.id}" type="text" placeholder="可选，如：听错字/团播串声" style="width:100%;max-width:260px;" />
+        </label>
+        <button type="button" class="btn ok sm" onclick="saveInlineEdit(${item.id}, '${scope}')">保存校对</button>
+        <button type="button" class="btn sec sm" onclick="toggleInlineEdit(${item.id}, '${scope}')">取消</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleInlineEdit(subId, scope) {
+  const el = document.getElementById(`edit-${scope}-${subId}`);
+  if (!el) return;
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) {
+    const ta = document.getElementById(`edit-text-${scope}-${subId}`);
+    if (ta) ta.focus();
+  }
+}
+
+function toggleEditMemberSelect(scope, subId) {
+  const lbl = document.getElementById(`edit-label-${scope}-${subId}`).value;
+  const wrap = document.getElementById(`edit-member-wrap-${scope}-${subId}`);
+  if (wrap) wrap.classList.toggle('hidden', lbl === 'external' || lbl === 'unknown');
+}
+
+async function saveInlineEdit(subId, scope) {
+  const textEl = document.getElementById(`edit-text-${scope}-${subId}`);
+  const lblEl = document.getElementById(`edit-label-${scope}-${subId}`);
+  const nameEl = document.getElementById(`edit-name-${scope}-${subId}`);
+  const noteEl = document.getElementById(`edit-note-${scope}-${subId}`);
+  const payload = {
+    content: textEl ? textEl.value.trim() : null,
+    speaker_label: lblEl ? lblEl.value : null,
+    speaker_name: (lblEl && (lblEl.value === 'host' || lblEl.value === 'mixed') && nameEl) ? nameEl.value : '',
+    note: noteEl ? noteEl.value.trim() : ''
+  };
+  const r = await fetch(`/api/v1/admin/subtitles/${subId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    showToast(data.detail || '保存失败', true);
+    return;
+  }
+  showToast(data.changed ? '已保存校对并锁定 ✓' : '内容未发生变化');
+  applyUpdatedItemToViews(data.subtitle, scope);
+}
+
+async function quickSetSpeaker(subId, label, name, scope) {
+  const r = await fetch(`/api/v1/admin/subtitles/${subId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ speaker_label: label, speaker_name: name, note: '快捷切换声音来源' })
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    showToast(data.detail || '修改失败', true);
+    return;
+  }
+  showToast(`已改为 ${formatSpeakerLabelText(data.subtitle.speaker_label, data.subtitle.speaker_name, data.subtitle.up_name)} ✓`);
+  applyUpdatedItemToViews(data.subtitle, scope);
+}
+
+function applyUpdatedItemToViews(sub, scope) {
+  if (!sub) return;
+  if (lastSearchItems.has(sub.id)) {
+    const old = lastSearchItems.get(sub.id);
+    const merged = { ...old, ...sub };
+    lastSearchItems.set(sub.id, merged);
+    const card = document.getElementById(`card-search-${sub.id}`);
+    if (card) card.outerHTML = renderSearchCard(merged);
+  }
+  const rvIdx = rvItems.findIndex(x => x.id === sub.id);
+  if (rvIdx >= 0) {
+    rvItems[rvIdx] = { ...rvItems[rvIdx], ...sub };
+    const card = document.getElementById(`card-review-${sub.id}`);
+    if (card) card.outerHTML = renderReviewCard(rvItems[rvIdx], rvIdx);
+  }
+  for (const [hostId, list] of ctxCache.entries()) {
+    const idx = list.findIndex(x => x.id === sub.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...sub };
+      renderContextBox(hostId, scope.startsWith('ctx-') ? scope.slice(4) : 'search');
+    }
+  }
+}
+
+function hasQuery() {
+  return Boolean(
+    document.getElementById('qInput').value.trim() ||
+    document.getElementById('bvidFilter').value.trim() ||
+    document.getElementById('dateFrom').value ||
+    document.getElementById('dateTo').value
+  );
 }
 
 function copyText(text, btn) {
@@ -365,23 +750,21 @@ function copyText(text, btn) {
 }
 
 function switchTab(tab) {
-  for (const name of ['search', 'videos', 'ingest']) {
+  for (const name of ['search', 'review', 'rules', 'edits', 'videos', 'ingest']) {
     document.getElementById('view-' + name).classList.toggle('hidden', name !== tab);
     document.getElementById('tab-' + name).classList.toggle('active', name === tab);
   }
+  if (tab === 'review' && rvItems.length === 0) loadReviewQueue(1);
+  if (tab === 'edits') loadEdits(1);
   if (tab === 'videos') loadVideos();
   if (tab === 'ingest') { checkAuth(); pollIngestStatus(); }
 }
 
 function toggleUp(el) {
   const up = el.dataset.up || '';
-  if (!up) {
-    selectedUps.clear();
-  } else if (selectedUps.has(up)) {
-    selectedUps.delete(up);
-  } else {
-    selectedUps.add(up);
-  }
+  if (!up) selectedUps.clear();
+  else if (selectedUps.has(up)) selectedUps.delete(up);
+  else selectedUps.add(up);
   document.querySelectorAll('#upChips .chip').forEach(c => {
     const key = c.dataset.up || '';
     c.classList.toggle('active', key === '' ? selectedUps.size === 0 : selectedUps.has(key));
@@ -391,21 +774,21 @@ function toggleUp(el) {
 
 function resetFilters() {
   document.getElementById('qInput').value = '';
-  document.getElementById('sceneFilter').value = '';
+  document.getElementById('speakerSourceFilter').value = 'all';
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value = '';
   document.getElementById('bvidFilter').value = '';
   document.getElementById('sortFilter').value = 'date_desc';
   selectedUps.clear();
   document.querySelectorAll('#upChips .chip').forEach(c => c.classList.toggle('active', c.dataset.up === ''));
-  document.getElementById('searchSummary').textContent = '请输入关键词或指定 BV 号 / 日期范围开始检索（默认不展示全量字幕）';
+  document.getElementById('searchSummary').textContent = '请输入关键词或指定 BV 号 / 日期范围开始检索与校对';
   document.getElementById('debugPagerTop').innerHTML = '';
   document.getElementById('debugPagerBottom').innerHTML = '';
-  document.getElementById('searchResults').innerHTML = '<div class="panel empty"><div style="font-weight:600;color:var(--text);margin-bottom:6px;">请输入关键词开始检索（默认不展示全量字幕，避免卡顿）</div><div>请核对直播形式，电影回、团播、电台回等可能会因为 BGM 存在人声 / 多人发言而导致字幕与发言人不对应。</div></div>';
+  document.getElementById('searchResults').innerHTML = '<div class="panel empty"><div style="font-weight:600;color:var(--text);margin-bottom:6px;">请输入关键词或 BV 号开始检索校对</div><div>支持原地修改字幕文本、一键切换声音来源，并在前后上下文里批量修改连续片段。</div></div>';
 }
 
 async function loadStats() {
-  const r = await fetch('/api/v1/stats');
+  const r = await fetch('/api/v1/stats', { cache: 'no-store' });
   const s = await r.json();
   document.getElementById('statVideos').textContent = `场次分P: ${s.video_parts_ok} / ${s.video_parts_total}`;
   document.getElementById('statLines').textContent = `字幕总条数: ${s.subtitles_total.toLocaleString()}`;
@@ -428,37 +811,65 @@ async function checkAuth() {
   }
 }
 
-function renderDebugPagers() {
-  const html = totalPages > 1 ? `
-    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(1)" ${currentPage <= 1 ? 'disabled' : ''}>首页</button>
-    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>上一页</button>
-    <span style="font-size:12px;">第 ${currentPage} / ${totalPages} 页</span>
-    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>下一页</button>
-    <button class="btn sec" style="padding:4px 9px;font-size:12px;" onclick="runSearch(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''}>末页</button>
-    <input type="number" min="1" max="${totalPages}" value="${currentPage}" style="width:56px;padding:3px 6px;font-size:12px;" onkeydown="if(event.key==='Enter') runSearch(parseInt(this.value||'1',10))" />
-  ` : '';
-  document.getElementById('debugPagerTop').innerHTML = html;
-  document.getElementById('debugPagerBottom').innerHTML = html;
+function renderPagerHtml(cur, total, fnName) {
+  if (total <= 1) return '';
+  return `
+    <button class="btn sec sm" onclick="${fnName}(1)" ${cur <= 1 ? 'disabled' : ''}>首页</button>
+    <button class="btn sec sm" onclick="${fnName}(${cur - 1})" ${cur <= 1 ? 'disabled' : ''}>上一页</button>
+    <span style="font-size:12px;">第 ${cur} / ${total} 页</span>
+    <button class="btn sec sm" onclick="${fnName}(${cur + 1})" ${cur >= total ? 'disabled' : ''}>下一页</button>
+    <button class="btn sec sm" onclick="${fnName}(${total})" ${cur >= total ? 'disabled' : ''}>末页</button>
+    <input type="number" min="1" max="${total}" value="${cur}" style="width:56px;padding:3px 6px;font-size:12px;" onkeydown="if(event.key==='Enter') ${fnName}(parseInt(this.value||'1',10))" />
+  `;
+}
+
+function renderSearchCard(it) {
+  const cardMod = it.speaker_label === 'external' ? ' is-external' : '';
+  return `
+    <div class="card${cardMod}" id="card-search-${it.id}">
+      <div class="card-meta">
+        <span class="badge up">${esc(it.up_name)}</span>
+        ${renderSpeakerBadge(it)}
+        <span class="badge time">${esc(it.start_hms)} ~ ${esc(it.end_hms)}</span>
+        <span>${esc(it.pub_date)}</span>
+        <span><b>${esc(it.bvid)}</b> P${it.page}</span>
+        <span style="font-size:11.5px;color:#94a3b8;">#${it.id}</span>
+      </div>
+      <div class="sub-text">${highlight(it.content, lastSearchQuery, lastFuzzyExpanded)}</div>
+      ${renderQuickSpeakerButtons(it, 'search')}
+      ${renderInlineEditorHtml(it, 'search')}
+      <div class="card-foot">
+        <div>${esc(it.title)}${it.part_title && it.part_title !== it.title ? ' · ' + esc(it.part_title) : ''}</div>
+        <div class="card-actions">
+          <button class="btn sec sm" onclick="toggleInlineEdit(${it.id}, 'search')">校对字幕/来源</button>
+          <button class="link-btn" onclick="toggleContext(${it.id}, '${esc(it.bvid)}', ${it.page}, ${it.start_sec}, 'search')">前后上下文(可批量改)</button>
+          <button class="link-btn" onclick="jumpToTimeline('${esc(it.bvid)}', ${it.page}, ${Math.max(0, Math.floor(it.start_sec - 30))})">时间轴校对</button>
+          <button class="link-btn" onclick="copyText('${esc(it.jump_url)}', this)">复制链接</button>
+          <a class="link-btn" href="${esc(it.jump_url)}" target="_blank" rel="noopener noreferrer">打开 B 站 (${esc(it.start_hms)}) ↗</a>
+        </div>
+      </div>
+      <div class="ctx-box hidden" id="ctx-search-${it.id}"></div>
+    </div>
+  `;
 }
 
 async function runSearch(page) {
-  if (!hasQuery()) {
-    resetFilters();
-    return;
-  }
+  if (!hasQuery()) { resetFilters(); return; }
   currentPage = Math.max(1, page || 1);
   const offset = (currentPage - 1) * pageLimit;
   const q = document.getElementById('qInput').value.trim();
+  lastSearchQuery = q;
+
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (selectedUps.size > 0) params.set('up_name', Array.from(selectedUps).join(','));
-  const scene = document.getElementById('sceneFilter').value;
+  const speakerSource = document.getElementById('speakerSourceFilter').value;
   const df = document.getElementById('dateFrom').value;
   const dt = document.getElementById('dateTo').value;
   const bv = document.getElementById('bvidFilter').value.trim();
   const sort = document.getElementById('sortFilter').value;
   const fuzzy = document.getElementById('fuzzyToggle').checked;
-  if (scene) params.set('scene_type', scene);
+  if (speakerSource && speakerSource !== 'all') params.set('speaker_source', speakerSource);
   if (df) params.set('date_from', df);
   if (dt) params.set('date_to', dt);
   if (bv) params.set('bvid', bv);
@@ -469,6 +880,7 @@ async function runSearch(page) {
 
   const r = await fetch('/api/v1/search?' + params.toString());
   const data = await r.json();
+  lastFuzzyExpanded = data.fuzzy_expanded || null;
   const p = data.pagination;
   totalPages = p.total_pages || 0;
   const startNum = p.total === 0 ? 0 : p.offset + 1;
@@ -480,63 +892,453 @@ async function runSearch(page) {
   }
   document.getElementById('searchSummary').textContent =
     `共命中 ${p.total.toLocaleString()} 条字幕（当前显示 ${startNum} - ${endNum}）${expNote}`;
-  renderDebugPagers();
+  const pagerHtml = renderPagerHtml(currentPage, totalPages, 'runSearch');
+  document.getElementById('debugPagerTop').innerHTML = pagerHtml;
+  document.getElementById('debugPagerBottom').innerHTML = pagerHtml;
 
   const box = document.getElementById('searchResults');
+  lastSearchItems.clear();
   if (!data.items.length) {
     box.innerHTML = `<div class="panel empty">没有找到匹配的字幕记录。</div>`;
     return;
   }
+  data.items.forEach(it => lastSearchItems.set(it.id, it));
+  box.innerHTML = data.items.map(renderSearchCard).join('');
+}
 
-  box.innerHTML = data.items.map(it => `
-    <div class="card" id="card-${it.id}">
+// ===== 上下文抽屉（支持勾选连续多条批量改声音来源 + 单条改正文） =====
+async function toggleContext(subId, bvid, page, startSec, scope) {
+  const el = document.getElementById(`ctx-${scope}-${subId}`);
+  if (!el) return;
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.textContent = '正在加载前后 25 秒上下文...';
+  const r = await fetch(`/api/v1/videos/${encodeURIComponent(bvid)}/subtitles?page=${page}&start_sec=${Math.max(0, startSec - 25)}&end_sec=${startSec + 25}&limit=40`);
+  const data = await r.json();
+  if (!data.items || !data.items.length) { el.textContent = '暂无上下文数据'; return; }
+  ctxCache.set(subId, data.items);
+  ctxSelectedMap.set(subId, new Set());
+  ctxLastIdxMap.set(subId, -1);
+  renderContextBox(subId, scope);
+}
+
+function renderContextBox(hostSubId, scope) {
+  const el = document.getElementById(`ctx-${scope}-${hostSubId}`);
+  const items = ctxCache.get(hostSubId);
+  if (!el || !items) return;
+  const sel = ctxSelectedMap.get(hostSubId) || new Set();
+  const selCount = sel.size;
+
+  const toolbar = `
+    <div class="ctx-toolbar">
+      <span>上下文连续校对（可勾选或 Shift 连选，已选 <b>${selCount}</b> 条）：</span>
+      <button type="button" class="qspk-btn" onclick="ctxSelectAll(${hostSubId}, '${scope}', true)">全选</button>
+      <button type="button" class="qspk-btn" onclick="ctxSelectAll(${hostSubId}, '${scope}', false)">清空</button>
+      ${selCount > 0 ? `
+        <span style="margin-left:4px;">批量改选中为：</span>
+        ${MEMBERS.map(m => `<button type="button" class="qspk-btn" onclick="ctxBatchSpeaker(${hostSubId}, '${scope}', 'host', '${m}')">${m}原声</button>`).join('')}
+        <button type="button" class="qspk-btn" onclick="ctxBatchSpeaker(${hostSubId}, '${scope}', 'mixed', '')">含混音</button>
+        <button type="button" class="qspk-btn" onclick="ctxBatchSpeaker(${hostSubId}, '${scope}', 'external', '')">无关音轨</button>
+      ` : ''}
+    </div>
+  `;
+
+  const rowsHtml = items.map((x, idx) => {
+    const checked = sel.has(x.id) ? 'checked' : '';
+    const spkText = formatSpeakerLabelText(x.speaker_label, x.speaker_name, '');
+    const lockMark = Number(x.speaker_locked || 0) === 1 ? '✓' : '';
+    const cls = x.speaker_label === 'host' ? 'src-host' : (x.speaker_label === 'mixed' ? 'src-mixed' : (x.speaker_label === 'external' ? 'src-external' : 'src-unknown'));
+    const t = MEMBER_THEMES[x.speaker_name] || {};
+    const extraVars = x.speaker_label === 'host' && t.color ? `--src-color:${t.color};--src-bg:${t.bg};--src-ink:${t.ink};` : '';
+    return `
+      <div class="ctx-line ${x.id === hostSubId ? 'hit' : ''}">
+        <input type="checkbox" ${checked} onclick="toggleCtxCheck(event, ${hostSubId}, '${scope}', ${x.id}, ${idx})" />
+        <span class="ctx-ts">${Number(x.start_sec).toFixed(1)}s</span>
+        <span class="badge ${cls}" style="${extraVars}font-size:11px;padding:1px 6px;">${esc(spkText)}${lockMark}</span>
+        <span class="ctx-content">${esc(x.content)}</span>
+        <button type="button" class="link-btn" style="font-size:11.5px;" onclick="promptEditCtxContent(${hostSubId}, '${scope}', ${x.id})">改字</button>
+      </div>
+    `;
+  }).join('');
+
+  el.innerHTML = toolbar + rowsHtml;
+}
+
+function toggleCtxCheck(event, hostSubId, scope, subId, idx) {
+  const items = ctxCache.get(hostSubId) || [];
+  const sel = ctxSelectedMap.get(hostSubId) || new Set();
+  const checked = event.target.checked;
+  const lastIdx = ctxLastIdxMap.get(hostSubId);
+  if (event.shiftKey && lastIdx >= 0 && lastIdx !== idx) {
+    const a = Math.min(lastIdx, idx);
+    const b = Math.max(lastIdx, idx);
+    for (let i = a; i <= b; i++) {
+      if (checked) sel.add(items[i].id); else sel.delete(items[i].id);
+    }
+  } else {
+    if (checked) sel.add(subId); else sel.delete(subId);
+  }
+  ctxLastIdxMap.set(hostSubId, idx);
+  ctxSelectedMap.set(hostSubId, sel);
+  renderContextBox(hostSubId, scope);
+}
+
+function ctxSelectAll(hostSubId, scope, flag) {
+  const items = ctxCache.get(hostSubId) || [];
+  const sel = new Set(flag ? items.map(x => x.id) : []);
+  ctxSelectedMap.set(hostSubId, sel);
+  renderContextBox(hostSubId, scope);
+}
+
+async function ctxBatchSpeaker(hostSubId, scope, label, name) {
+  const ids = Array.from(ctxSelectedMap.get(hostSubId) || []);
+  if (!ids.length) return;
+  const r = await fetch('/api/v1/admin/subtitles/batch-speaker', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ subtitle_ids: ids, speaker_label: label, speaker_name: name || null, note: '上下文批量校对' })
+  });
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '批量修改失败', true); return; }
+  showToast(`已批量修改 ${data.updated} 条声音来源 ✓`);
+  const items = ctxCache.get(hostSubId) || [];
+  const idSet = new Set(ids);
+  items.forEach(x => {
+    if (idSet.has(x.id)) {
+      x.speaker_label = label;
+      x.speaker_name = (label === 'external' || label === 'unknown') ? '' : (name || x.speaker_name || '');
+      x.speaker_locked = 1;
+      applyUpdatedItemToViews(x, 'ctx-' + scope);
+    }
+  });
+  ctxSelectedMap.set(hostSubId, new Set());
+  renderContextBox(hostSubId, scope);
+}
+
+async function promptEditCtxContent(hostSubId, scope, subId) {
+  const items = ctxCache.get(hostSubId) || [];
+  const target = items.find(x => x.id === subId);
+  if (!target) return;
+  const next = window.prompt('修改该条字幕正文：', target.content);
+  if (next === null || next.trim() === '' || next.trim() === target.content) return;
+  const r = await fetch(`/api/v1/admin/subtitles/${subId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ content: next.trim(), note: '上下文快速改字' })
+  });
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '改字失败', true); return; }
+  showToast('字幕已更新并锁定 ✓');
+  applyUpdatedItemToViews(data.subtitle, 'ctx-' + scope);
+}
+
+// ===== 2. 集中校对台（声纹灰色边界 / 混音 / 时间轴批量） =====
+function onReviewModeChange() {
+  const mode = document.getElementById('rvMode').value;
+  document.getElementById('rvSimRangeWrap').classList.toggle('hidden', mode !== 'uncertain');
+  document.getElementById('rvTimeRangeWrap').classList.toggle('hidden', mode !== 'timeline');
+  if (mode !== 'timeline' || document.getElementById('rvBvid').value.trim()) {
+    loadReviewQueue(1);
+  }
+}
+
+function jumpToTimeline(bvid, page, startSec) {
+  document.getElementById('rvMode').value = 'timeline';
+  document.getElementById('rvBvid').value = bvid;
+  document.getElementById('rvPage').value = page || 1;
+  document.getElementById('rvStartSec').value = startSec != null ? startSec : '';
+  document.getElementById('rvEndSec').value = '';
+  document.getElementById('rvIncludeLocked').checked = true;
+  document.getElementById('rvSimRangeWrap').classList.add('hidden');
+  document.getElementById('rvTimeRangeWrap').classList.remove('hidden');
+  switchTab('review');
+  loadReviewQueue(1);
+}
+
+function jumpToUncertain(bvid, page) {
+  document.getElementById('rvMode').value = 'uncertain';
+  document.getElementById('rvBvid').value = bvid;
+  document.getElementById('rvPage').value = page || '';
+  document.getElementById('rvStartSec').value = '';
+  document.getElementById('rvEndSec').value = '';
+  document.getElementById('rvSimRangeWrap').classList.remove('hidden');
+  document.getElementById('rvTimeRangeWrap').classList.add('hidden');
+  switchTab('review');
+  loadReviewQueue(1);
+}
+
+function renderReviewCard(it, idx) {
+  const checked = rvSelectedIds.has(it.id);
+  const cardMod = (checked ? ' is-selected' : '') + (it.speaker_label === 'external' ? ' is-external' : '');
+  return `
+    <div class="card${cardMod}" id="card-review-${it.id}">
       <div class="card-meta">
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--text);font-weight:600;">
+          <input type="checkbox" ${checked ? 'checked' : ''} onclick="toggleReviewCheck(event, ${it.id}, ${idx})" />
+          #${it.id}
+        </label>
         <span class="badge up">${esc(it.up_name)}</span>
-        <span class="badge scene">${esc(it.scene_type)}</span>
+        ${renderSpeakerBadge(it)}
         <span class="badge time">${esc(it.start_hms)} ~ ${esc(it.end_hms)}</span>
-        <span>(${it.start_sec.toFixed(2)}s - ${it.end_sec.toFixed(2)}s)</span>
         <span>${esc(it.pub_date)}</span>
         <span><b>${esc(it.bvid)}</b> P${it.page}</span>
       </div>
-      <div class="sub-text">${highlight(it.content, q, data.fuzzy_expanded)}</div>
+      <div class="sub-text">${esc(it.content)}</div>
+      ${renderQuickSpeakerButtons(it, 'review')}
+      ${renderInlineEditorHtml(it, 'review')}
       <div class="card-foot">
         <div>${esc(it.title)}${it.part_title && it.part_title !== it.title ? ' · ' + esc(it.part_title) : ''}</div>
         <div class="card-actions">
-          <button class="link-btn" onclick="toggleContext(${it.id}, '${esc(it.bvid)}', ${it.page}, ${it.start_sec})">查看前后上下文</button>
-          <button class="link-btn" onclick="copyText('${esc(it.jump_url)}', this)">复制空降链接</button>
-          <a class="link-btn" href="${esc(it.jump_url)}" target="_blank" rel="noopener noreferrer" title="若播放器被历史进度覆盖，打开后按 F5 或手动拖至 ${esc(it.start_hms)}">打开 B 站 (${esc(it.start_hms)}) ↗</a>
+          <button class="btn sec sm" onclick="toggleInlineEdit(${it.id}, 'review')">校对字幕/来源</button>
+          <button class="link-btn" onclick="toggleContext(${it.id}, '${esc(it.bvid)}', ${it.page}, ${it.start_sec}, 'review')">前后上下文</button>
+          <a class="link-btn" href="${esc(it.jump_url)}" target="_blank" rel="noopener noreferrer">打开 B 站 (${esc(it.start_hms)}) ↗</a>
         </div>
       </div>
-      <div class="ctx-box hidden" id="ctx-${it.id}"></div>
+      <div class="ctx-box hidden" id="ctx-review-${it.id}"></div>
     </div>
-  `).join('');
+  `;
 }
 
-function changePage(dir) { runSearch(Math.max(0, currentOffset + dir * pageLimit)); }
+function syncReviewBatchBar() {
+  const bar = document.getElementById('rvBatchBar');
+  const n = rvSelectedIds.size;
+  document.getElementById('rvSelectedCount').textContent = `已选 ${n} 条`;
+  bar.classList.toggle('hidden', rvItems.length === 0);
+}
 
-async function toggleContext(subId, bvid, page, startSec) {
-  const el = document.getElementById('ctx-' + subId);
-  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
-  el.classList.remove('hidden');
-  el.textContent = '正在加载前后上下文...';
-  const r = await fetch(`/api/v1/videos/${encodeURIComponent(bvid)}/subtitles?page=${page}&start_sec=${Math.max(0, startSec - 25)}&end_sec=${startSec + 25}&limit=30`);
+function toggleReviewCheck(event, subId, idx) {
+  const checked = event.target.checked;
+  if (event.shiftKey && rvLastCheckedIdx >= 0 && rvLastCheckedIdx !== idx) {
+    const a = Math.min(rvLastCheckedIdx, idx);
+    const b = Math.max(rvLastCheckedIdx, idx);
+    for (let i = a; i <= b; i++) {
+      if (checked) rvSelectedIds.add(rvItems[i].id);
+      else rvSelectedIds.delete(rvItems[i].id);
+    }
+    document.getElementById('rvList').innerHTML = rvItems.map((it, i) => renderReviewCard(it, i)).join('');
+  } else {
+    if (checked) rvSelectedIds.add(subId); else rvSelectedIds.delete(subId);
+    const card = document.getElementById(`card-review-${subId}`);
+    if (card) card.classList.toggle('is-selected', checked);
+  }
+  rvLastCheckedIdx = idx;
+  syncReviewBatchBar();
+}
+
+function selectAllReview(flag) {
+  rvSelectedIds = new Set(flag ? rvItems.map(x => x.id) : []);
+  document.getElementById('rvList').innerHTML = rvItems.map((it, i) => renderReviewCard(it, i)).join('');
+  syncReviewBatchBar();
+}
+
+async function batchSetReviewSpeaker(label, name) {
+  const ids = Array.from(rvSelectedIds);
+  if (!ids.length) { showToast('请先勾选至少一条字幕', true); return; }
+  const r = await fetch('/api/v1/admin/subtitles/batch-speaker', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      subtitle_ids: ids,
+      speaker_label: label,
+      speaker_name: name || null,
+      note: '集中校对台批量修正声音来源'
+    })
+  });
   const data = await r.json();
-  if (!data.items.length) { el.textContent = '暂无上下文数据'; return; }
-  el.innerHTML = data.items.map(x => `
-    <div class="ctx-line ${x.id === subId ? 'hit' : ''}">
-      <span class="ctx-ts">${x.start_sec.toFixed(2)}s</span>
-      <span>${esc(x.content)}</span>
-    </div>
-  `).join('');
+  if (!r.ok) { showToast(data.detail || '批量修改失败', true); return; }
+  showToast(`已批量修正 ${data.updated} 条字幕的声音来源并锁定 ✓`);
+  rvSelectedIds.clear();
+  await loadReviewQueue(rvPageNum);
 }
 
+async function loadReviewQueue(page) {
+  rvPageNum = Math.max(1, page || 1);
+  const mode = document.getElementById('rvMode').value;
+  const bvid = document.getElementById('rvBvid').value.trim();
+  if (mode === 'timeline' && !bvid) {
+    document.getElementById('rvSummary').textContent = '按场次时间轴顺序校对模式请先输入 BV 号（或从「已入库场次」点时间轴校对进入）';
+    document.getElementById('rvList').innerHTML = '<div class="panel empty">请输入 BV 号后再点击「加载队列」。</div>';
+    document.getElementById('rvBatchBar').classList.add('hidden');
+    return;
+  }
+
+  const params = new URLSearchParams({
+    mode,
+    limit: String(rvLimit),
+    offset: String((rvPageNum - 1) * rvLimit),
+    include_locked: document.getElementById('rvIncludeLocked').checked ? 'true' : 'false'
+  });
+  const up = document.getElementById('rvUp').value;
+  const pNum = document.getElementById('rvPage').value.trim();
+  const sMin = document.getElementById('rvSimMin').value.trim();
+  const sMax = document.getElementById('rvSimMax').value.trim();
+  const stSec = document.getElementById('rvStartSec').value.trim();
+  const edSec = document.getElementById('rvEndSec').value.trim();
+  if (up) params.set('up_name', up);
+  if (bvid) params.set('bvid', bvid);
+  if (pNum) params.set('page', pNum);
+  if (mode === 'uncertain') {
+    if (sMin) params.set('sim_min', sMin);
+    if (sMax) params.set('sim_max', sMax);
+  }
+  if (mode === 'timeline') {
+    if (stSec) params.set('start_sec', stSec);
+    if (edSec) params.set('end_sec', edSec);
+  }
+
+  const r = await fetch('/api/v1/admin/review/candidates?' + params.toString());
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '加载队列失败', true); return; }
+
+  rvItems = data.items || [];
+  rvSelectedIds.clear();
+  rvLastCheckedIdx = -1;
+  rvTotalPages = data.total > 0 ? Math.ceil(data.total / rvLimit) : 0;
+  const startNum = data.total === 0 ? 0 : data.offset + 1;
+  const endNum = data.offset + rvItems.length;
+  document.getElementById('rvSummary').textContent =
+    `共 ${data.total.toLocaleString()} 条待审校字幕（显示 ${startNum} - ${endNum}）`;
+  const pagerHtml = renderPagerHtml(rvPageNum, rvTotalPages, 'loadReviewQueue');
+  document.getElementById('rvPagerTop').innerHTML = pagerHtml;
+  document.getElementById('rvPagerBottom').innerHTML = pagerHtml;
+
+  const box = document.getElementById('rvList');
+  if (!rvItems.length) {
+    box.innerHTML = '<div class="panel empty">当前筛选条件下没有待校对条目。</div>';
+  } else {
+    box.innerHTML = rvItems.map((it, idx) => renderReviewCard(it, idx)).join('');
+  }
+  syncReviewBatchBar();
+}
+
+// ===== 3. 全局错词规则沉淀 =====
+async function previewGlobalRule() {
+  const wrong = document.getElementById('ruleWrong').value.trim();
+  const right = document.getElementById('ruleRight').value.trim();
+  if (!wrong || !right) { showToast('请先输入错词和规范词', true); return; }
+  const r = await fetch('/api/v1/admin/rules/preview-add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ wrong_term: wrong, right_term: right })
+  });
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '预览失败', true); return; }
+  const box = document.getElementById('rulePreviewBox');
+  box.classList.remove('hidden');
+  const samplesHtml = (data.samples || []).length
+    ? data.samples.map(s => `
+        <div style="padding:6px 0;border-bottom:1px dashed #e5e7eb;font-size:13px;">
+          <span class="badge up">${esc(s.up)}</span> <span style="color:var(--muted);">${esc(s.bvid)}</span><br/>
+          <span class="diff-old">${esc(s.old)}</span> → <span class="diff-new">${esc(s.new)}</span>
+        </div>
+      `).join('')
+    : '<div style="color:var(--muted);font-size:13px;">当前存量库暂无待替换命中（仍可写入规则，供未来新入库自动纠错）。</div>';
+  box.innerHTML = `
+    <div style="font-weight:600;margin-bottom:8px;">
+      预览结果：<code>${esc(data.wrong_term)}</code> → <code>${esc(data.right_term)}</code>，
+      可修复 <b>${data.matched_count}</b> 条字幕（自动保护跳过已人工锁定 ${data.locked_skipped} 条）
+    </div>
+    ${samplesHtml}
+  `;
+}
+
+async function applyGlobalRule() {
+  const wrong = document.getElementById('ruleWrong').value.trim();
+  const right = document.getElementById('ruleRight').value.trim();
+  const note = document.getElementById('ruleNote').value.trim();
+  const applyCorpus = document.getElementById('ruleApplyCorpus').checked;
+  if (!wrong || !right) { showToast('请先输入错词和规范词', true); return; }
+  if (!window.confirm(`确认将「${wrong} → ${right}」写入 config/correction_rules.json${applyCorpus ? ' 并立即全库批量修复' : ''}？`)) return;
+  const r = await fetch('/api/v1/admin/rules/apply-add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ wrong_term: wrong, right_term: right, note, apply_corpus: applyCorpus })
+  });
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '写入规则失败', true); return; }
+  const nUpdated = data.normalization ? data.normalization.updated : 0;
+  showToast(`规则已保存 (${data.rule.status})，全库修正 ${nUpdated} 条 ✓`);
+  document.getElementById('ruleWrong').value = '';
+  document.getElementById('ruleRight').value = '';
+  document.getElementById('ruleNote').value = '';
+  document.getElementById('rulePreviewBox').classList.add('hidden');
+}
+
+// ===== 4. 校对历史与回滚 =====
+async function loadEdits(page) {
+  edPageNum = Math.max(1, page || 1);
+  const lim = 40;
+  const params = new URLSearchParams({ limit: String(lim), offset: String((edPageNum - 1) * lim) });
+  const bv = document.getElementById('edBvid').value.trim();
+  const et = document.getElementById('edType').value;
+  if (bv) params.set('bvid', bv);
+  if (et) params.set('edit_type', et);
+
+  const r = await fetch('/api/v1/admin/edits?' + params.toString());
+  const data = await r.json();
+  const totalP = data.total > 0 ? Math.ceil(data.total / lim) : 0;
+  document.getElementById('edSummary').textContent = `共 ${data.total.toLocaleString()} 条人工校对审计记录`;
+  document.getElementById('edPager').innerHTML = renderPagerHtml(edPageNum, totalP, 'loadEdits');
+
+  const tbody = document.getElementById('editsTbody');
+  if (!data.items || !data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无人工校对记录。</td></tr>';
+    return;
+  }
+  const typeMap = { text: '改字幕', speaker: '改来源', both: '改字幕+来源', revert: '回滚' };
+  tbody.innerHTML = data.items.map(e => {
+    const textChanged = e.old_content !== e.new_content;
+    const spkChanged = e.old_speaker_label !== e.new_speaker_label || e.old_speaker_name !== e.new_speaker_name;
+    const oldSpk = formatSpeakerLabelText(e.old_speaker_label, e.old_speaker_name, '');
+    const newSpk = formatSpeakerLabelText(e.new_speaker_label, e.new_speaker_name, '');
+    return `
+      <tr>
+        <td><b>#${e.id}</b><br/><span style="font-size:11px;color:var(--muted);">sub #${e.subtitle_id}</span></td>
+        <td>
+          <span class="badge ${e.edit_type === 'revert' ? 'src-external' : 'up'}">${typeMap[e.edit_type] || esc(e.edit_type)}</span>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${esc((e.created_at || '').replace('T', ' ').replace('Z', ''))}</div>
+        </td>
+        <td>
+          <b>${esc(e.up_name || '-')}</b> · ${esc(e.bvid)} P${e.page}<br/>
+          <a class="link-btn" href="${esc(e.jump_url)}" target="_blank" rel="noopener noreferrer">${esc(e.start_hms)} ↗</a>
+        </td>
+        <td>
+          ${textChanged
+            ? `<span class="diff-old">${esc(e.old_content)}</span><br/><span class="diff-new">${esc(e.new_content)}</span>`
+            : `<span style="color:var(--muted);">${esc(e.new_content)}</span>`}
+        </td>
+        <td>
+          ${spkChanged
+            ? `<span class="diff-old">${esc(oldSpk)}</span> → <span class="diff-new">${esc(newSpk)}</span>`
+            : `<span style="color:var(--muted);">${esc(newSpk)}</span>`}
+        </td>
+        <td>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${esc(e.note || '—')}</div>
+          ${e.edit_type !== 'revert'
+            ? `<button class="btn danger sm" onclick="revertEdit(${e.id})">一键回滚</button>`
+            : '<span style="font-size:11.5px;color:var(--muted);">已回滚</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function revertEdit(editId) {
+  if (!window.confirm(`确认回滚校对记录 #${editId} 并恢复到修改前状态？`)) return;
+  const r = await fetch(`/api/v1/admin/edits/${editId}/revert`, { method: 'POST' });
+  const data = await r.json();
+  if (!r.ok) { showToast(data.detail || '回滚失败', true); return; }
+  showToast(`已回滚校对记录 #${editId} ✓`);
+  applyUpdatedItemToViews(data.subtitle, 'search');
+  loadEdits(edPageNum);
+}
+
+// ===== 5. 已入库场次 =====
 async function loadVideos() {
   const params = new URLSearchParams();
   const up = document.getElementById('vUpFilter').value;
-  const sc = document.getElementById('vSceneFilter').value;
   const st = document.getElementById('vStatusFilter').value;
   if (up) params.set('up_name', up);
-  if (sc) params.set('scene_type', sc);
   if (st) params.set('status', st); else params.set('status', '');
   params.set('limit', 100);
   const r = await fetch('/api/v1/videos?' + params.toString());
@@ -553,12 +1355,12 @@ async function loadVideos() {
         <td>${esc(v.title)}${v.part_title ? '<br><span style="color:var(--muted);font-size:12px;">' + esc(v.part_title) + '</span>' : ''}</td>
         <td>${v.line_count}</td>
         <td>${esc(v.subtitle_status)}</td>
-        <td>
-          <select onchange="patchScene('${esc(v.bvid)}', ${v.page}, this.value)" style="padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;">
-            ${['unknown','solo','duo','group','special'].map(opt => `<option value="${opt}" ${v.scene_type===opt?'selected':''}>${opt}</option>`).join('')}
-          </select>
+        <td>${esc(v.voiceprint_status || 'none')}</td>
+        <td style="white-space:nowrap;">
+          <button class="link-btn" onclick="searchByBvid('${esc(v.bvid)}')">搜本场</button>
+          <button class="link-btn" onclick="jumpToTimeline('${esc(v.bvid)}', ${v.page}, 0)">时间轴校对</button>
+          ${v.voiceprint_status === 'done' ? `<button class="link-btn" onclick="jumpToUncertain('${esc(v.bvid)}', ${v.page})">边界校对</button>` : ''}
         </td>
-        <td><button class="link-btn" onclick="searchByBvid('${esc(v.bvid)}')">搜本场</button></td>
       </tr>
     `;
   }).join('');
@@ -570,30 +1372,14 @@ function searchByBvid(bvid) {
   runSearch(1);
 }
 
-async function patchScene(bvid, page, sceneType) {
-  await fetch(`/api/v1/admin/videos/${encodeURIComponent(bvid)}/scene`, {
-    method: 'PATCH',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ page, scene_type: sceneType, lock: true, reason: 'manual_debug_ui' })
-  });
-  loadStats();
-}
-
-async function triggerSceneTag() {
-  const r = await fetch('/api/v1/admin/scenes/tag', { method: 'POST' });
-  const data = await r.json();
-  alert(`场景初筛完成：处理 ${data.processed} 个分 P（跳过人工锁定 ${data.skipped_locked} 个）`);
-  loadVideos();
-  loadStats();
-}
-
 async function triggerOptimizeDb() {
   const r = await fetch('/api/v1/admin/db/optimize', { method: 'POST' });
   const data = await r.json();
-  alert(`索引优化完成，当前数据库体积：${data.db_size_mb} MB`);
+  showToast(`索引优化完成，当前体积 ${data.db_size_mb} MB`);
   loadStats();
 }
 
+// ===== 6. 登录与抓取 =====
 async function startQrLogin() {
   if (qrTimer) clearInterval(qrTimer);
   const r = await fetch('/api/v1/admin/auth/qrcode', { method: 'POST' });
@@ -632,7 +1418,6 @@ async function startIngest() {
     limit: parseInt(document.getElementById('ingLimit').value || '20', 10),
     since_date: document.getElementById('ingSince').value || null,
     until_date: document.getElementById('ingUntil').value || null,
-    auto_tag_scenes: true,
     force: false
   };
   const r = await fetch('/api/v1/admin/ingest/start', {
@@ -660,11 +1445,13 @@ async function pollIngestStatus() {
     box.scrollTop = box.scrollHeight;
   }
   await loadStats();
-  if (!st.running && ingestTimer) { clearInterval(ingestTimer); ingestTimer = null; runSearch(0); }
+  if (!st.running && ingestTimer) { clearInterval(ingestTimer); ingestTimer = null; }
 }
 
 document.getElementById('qInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(1); });
 document.getElementById('bvidFilter').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(1); });
+document.getElementById('rvBvid').addEventListener('keydown', e => { if (e.key === 'Enter') loadReviewQueue(1); });
+document.getElementById('edBvid').addEventListener('keydown', e => { if (e.key === 'Enter') loadEdits(1); });
 
 loadStats();
 checkAuth();

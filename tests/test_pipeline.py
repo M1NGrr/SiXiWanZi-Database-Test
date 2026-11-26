@@ -28,7 +28,6 @@ from zhijiang_corpus.normalizer import (
     build_fuzzy_fts_query,
     run_corpus_normalization,
 )
-from zhijiang_corpus.scene_tagger import run_scene_tagging
 from zhijiang_corpus.search import SearchQuery, SearchService
 from zhijiang_corpus.wbi import extract_wbi_keys, sign_wbi_params
 
@@ -102,22 +101,7 @@ def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
     assert second["lines_inserted"] == 0
     assert second["lines_duplicate"] == first["lines_inserted"]
 
-    # 2. 轻量场景初筛（验证标题无法区分的又一+恬豆双播也能被字幕识别！）
-    tagged = run_scene_tagging(db, cfg, dry_run=False)
-    by_bvid = {r.bvid: r for r in tagged}
-    assert by_bvid["BV1DEMO000001"].new_scene_type == "solo"     # 沐霂单播
-    assert by_bvid["BV1DEMO000002"].new_scene_type == "duo"      # 又一+恬豆（纯靠字幕识别）
-    assert by_bvid["BV1DEMO000003"].new_scene_type == "group"    # 恬豆团播
-    assert by_bvid["BV1DEMO000004"].new_scene_type == "special"  # 梨安生日会
-
-    # 3. 人工锁定后再次初筛不会被覆盖
-    db.update_scene_type("BV1DEMO000002", 1, "group", reason="人工复核", lock=True)
-    retagged = run_scene_tagging(db, cfg, dry_run=False)
-    by_bvid2 = {r.bvid: r for r in retagged}
-    assert by_bvid2["BV1DEMO000002"].skipped_locked is True
-    assert db.get_video("BV1DEMO000002", 1)["scene_type"] == "group"
-
-    # 4. 中文 1字 / 2字 / 长短语 / 英文 / 多关键词 / 过滤 / 分页 / 上下文检索
+    # 2. 中文 1字 / 2字 / 长短语 / 英文 / 多关键词 / 过滤 / 分页 / 上下文检索
     svc = SearchService(db)
 
     # 2字热词 + 跨 UP 命中
@@ -140,13 +124,12 @@ def test_full_pipeline_search_tagging_dedup_and_clips(tmp_path: Path) -> None:
     assert r_en["pagination"]["total"] == 1
     assert r_en["items"][0]["up_name"] == "恬豆"
 
-    # 多词 AND + 日期过滤 + scene_type 过滤 + 上下文
+    # 多词 AND + 日期过滤 + 上下文
     r_multi = svc.search(
         SearchQuery(
             q="卧底 大梨老师",
             date_from="2025-08-01",
             date_to="2025-08-31",
-            scene_types=["group"],
             context_lines=1,
         )
     )
@@ -284,8 +267,6 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
     db_file = tmp_path / "api.db"
     db = CorpusDB(db_file)
     seed_demo_data(db)
-    cfg = load_config(db_path=db_file)
-    run_scene_tagging(db, cfg, dry_run=False)
 
     # 1. 云端公网只读模式（enable_admin=False）：不暴露任何 admin 接口或调试页
     pub_app = create_app(db_path=db_file, enable_admin=False)
@@ -295,8 +276,8 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
     assert pub_client.get("/debug").status_code == 404
     assert pub_client.get("/api/v1/admin/auth/status").status_code == 404
     assert pub_client.patch(
-        "/api/v1/admin/videos/BV1DEMO000001/scene",
-        json={"page": 1, "scene_type": "special"},
+        "/api/v1/admin/videos/BV1DEMO000001/visibility",
+        json={"page": 1, "is_visible": 0},
     ).status_code == 404
 
     st = pub_client.get("/api/v1/stats").json()
@@ -324,13 +305,17 @@ def test_fastapi_endpoints_public_and_admin_separation(tmp_path: Path) -> None:
     assert loc_client.get("/debug").status_code == 200
 
     patch = loc_client.patch(
-        "/api/v1/admin/videos/BV1DEMO000001/scene",
-        json={"page": 1, "scene_type": "special", "lock": True, "reason": "api_test"},
+        "/api/v1/admin/videos/BV1DEMO000001/visibility",
+        json={"page": 1, "is_visible": 0},
     )
     assert patch.status_code == 200
 
-    sr2 = loc_client.get("/api/v1/search", params={"q": "黑话", "scene_type": "special"}).json()
-    assert any(it["bvid"] == "BV1DEMO000001" for it in sr2["items"])
+    sr2 = loc_client.get("/api/v1/search", params={"q": "黑话", "up_name": "沐霂"}).json()
+    assert sr2["pagination"]["total"] == 0
+    loc_client.patch(
+        "/api/v1/admin/videos/BV1DEMO000001/visibility",
+        json={"page": 1, "is_visible": 1},
+    )
 
     hit_id = sr["items"][0]["id"]
     plan = loc_client.post("/api/v1/admin/clips/plan", json={"subtitle_ids": [hit_id]}).json()
@@ -496,36 +481,7 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
         "左右神经没问题，又神厉害，先定个小目标，吃甜豆，看李安电影，再看梨安不迷路直播！"
     )
 
-    # 2. 场景打标：验证日常“又一次/又一个/又一边/又一样”不会误判为与“又一”双播
-    from zhijiang_corpus.scene_tagger import classify_video_scene
-
-    cfg = load_config(db_path=tmp_path / "tag_check.db")
-    solo_res = classify_video_scene(
-        {"bvid": "BV1SOLO00001", "page": 1, "up_name": "梨安", "title": "【直播回放】杂谈", "scene_type": "unknown"},
-        [
-            (10.0, "我又一次忘记保存了，真服了"),
-            (700.0, "怎么一个又一个接连出现啊"),
-            (1400.0, "又一边唱歌又一边画画，跟昨天又一样"),
-            (2100.0, "又一波敌人冲过来了"),
-        ],
-        cfg.members,
-    )
-    assert solo_res.new_scene_type == "solo"
-    assert "又一" not in solo_res.detected_members
-
-    duo_res = classify_video_scene(
-        {"bvid": "BV1DUO000001", "page": 1, "up_name": "梨安", "title": "【直播回放】杂谈", "scene_type": "unknown"},
-        [
-            (10.0, "又一你在哪儿呀快来连麦"),
-            (700.0, "哈哈哈哈又一太搞笑了"),
-            (1400.0, "王又一轮到你选歌啦"),
-        ],
-        cfg.members,
-    )
-    assert duo_res.new_scene_type == "duo"
-    assert "又一" in duo_res.detected_members
-
-    # 3. 同音模糊查询表达式校验
+    # 2. 同音模糊查询表达式校验
     expr, expanded = build_fuzzy_fts_query("四禧丸子", fuzzy=True)
     assert '"四 禧 丸 子"' in expr and '"四 喜 丸 子"' in expr
     assert "四禧丸子" in expanded
@@ -618,3 +574,374 @@ def test_incremental_delta_sync_and_live_stats(tmp_path: Path) -> None:
     # 4. 再次导出增量应为 0 变动
     exp2 = export_delta(local_db, build_manifest(cloud_db), delta_file)
     assert exp2["parts_changed"] == 0
+
+
+def test_voiceprint_classification_host_only_search_migration_and_sync(tmp_path: Path) -> None:
+    import sqlite3
+    from zhijiang_corpus.db import SubtitleRow, VideoRecord
+    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
+    from zhijiang_corpus.voiceprint import (
+        DEFAULT_VOICEPRINTS_PATH,
+        classify_utterance_scores,
+        is_re_watch_title,
+        load_voiceprints,
+        parse_time_to_sec,
+    )
+
+    # 1. 校验内置 4 位成员声纹库与工具函数
+    vp_cfg = load_voiceprints(DEFAULT_VOICEPRINTS_PATH)
+    assert set(vp_cfg["members"].keys()) == {"又一", "沐霂", "梨安", "恬豆"}
+    for member, info in vp_cfg["members"].items():
+        assert len(info["embedding"]) == vp_cfg["dim"]
+        assert info["clean_p50"] >= 0.65
+
+    assert parse_time_to_sec("0:15:00") == 900.0
+    assert parse_time_to_sec("04:30") == 270.0
+    assert is_re_watch_title("【直播回放】Re:略略略略 2026年11月25日20点场") is True
+    assert is_re_watch_title("【直播回放】一起看迪迦奥特曼！！") is True
+    assert is_re_watch_title("【直播回放】做个雪花酥【做完了】") is False
+
+    # 2. 校验四成员三段式分类规则（直判 host + 对应成员名 / 滑窗峰值 mixed / 邻接平滑 host / 边界 external 保持过滤）
+    seq = [
+        {"id": 1, "start_sec": 10.0, "end_sec": 14.0, "sim_mean": 0.16, "sim_peak": 0.19, "best_member": "又一"},
+        {"id": 2, "start_sec": 14.4, "end_sec": 17.8, "sim_mean": 0.49, "sim_peak": 0.546, "best_member": "又一", "peak_member": "又一"},
+        {"id": 3, "start_sec": 583.4, "end_sec": 584.5, "sim_mean": 0.58, "sim_peak": 0.58, "best_member": "又一"},
+        {"id": 4, "start_sec": 584.5, "end_sec": 586.1, "sim_mean": 0.46, "sim_peak": 0.46, "best_member": "又一", "member_sims": {"又一": 0.46, "沐霂": 0.22}},
+        {"id": 5, "start_sec": 586.1, "end_sec": 594.3, "sim_mean": 0.76, "sim_peak": 0.76, "best_member": "梨安"},
+        {"id": 6, "start_sec": 739.2, "end_sec": 741.4, "sim_mean": 0.31, "sim_peak": 0.31, "best_member": "沐霂"},
+        {"id": 7, "start_sec": 741.5, "end_sec": 744.1, "sim_mean": 0.491, "sim_peak": 0.491, "best_member": "又一"},
+    ]
+    classify_utterance_scores(seq)
+    assert [x["speaker_label"] for x in seq] == [
+        "external",
+        "mixed",
+        "host",
+        "host",
+        "host",
+        "external",
+        "external",
+    ]
+    assert [x["speaker_name"] for x in seq] == [
+        "",
+        "又一",
+        "又一",
+        "又一",
+        "梨安",
+        "",
+        "",
+    ]
+    assert seq[3]["reason"] == "smooth"
+
+    # 3. 校验旧库自动增量列迁移（模拟缺少 speaker_label / speaker_sim / voiceprint_status 的存量库）
+    legacy_db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(legacy_db_path))
+    conn.executescript(
+        """
+        CREATE TABLE videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bvid TEXT NOT NULL,
+            page INTEGER NOT NULL DEFAULT 1,
+            cid INTEGER,
+            up_uid INTEGER,
+            up_name TEXT NOT NULL,
+            raw_up_name TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            part_title TEXT NOT NULL DEFAULT '',
+            pub_date TEXT NOT NULL,
+            pub_ts INTEGER NOT NULL DEFAULT 0,
+            duration_sec INTEGER NOT NULL DEFAULT 0,
+            subtitle_lan TEXT NOT NULL DEFAULT '',
+            subtitle_status TEXT NOT NULL DEFAULT 'pending',
+            line_count INTEGER NOT NULL DEFAULT 0,
+            scene_type TEXT NOT NULL DEFAULT 'unknown',
+            scene_confidence REAL NOT NULL DEFAULT 0.0,
+            scene_reason TEXT NOT NULL DEFAULT '',
+            scene_locked INTEGER NOT NULL DEFAULT 0,
+            is_visible INTEGER NOT NULL DEFAULT 1,
+            extra_meta TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            UNIQUE (bvid, page)
+        );
+        CREATE TABLE subtitles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            up_name TEXT NOT NULL,
+            bvid TEXT NOT NULL,
+            page INTEGER NOT NULL DEFAULT 1,
+            pub_date TEXT NOT NULL,
+            start_sec REAL NOT NULL,
+            end_sec REAL NOT NULL,
+            content TEXT NOT NULL,
+            content_fts TEXT NOT NULL DEFAULT '',
+            scene_type TEXT NOT NULL DEFAULT 'unknown',
+            is_visible INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT 'bilibili_ai',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            UNIQUE (bvid, page, start_sec, end_sec, content)
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    local_db = CorpusDB(legacy_db_path)
+    local_db.init_db()  # 应自动补齐 3 个新列
+
+    # 4. 写入 1 场已打分 Re 场次 + 1 场未打分普通场次，验证 host_only 检索与增量同步
+    local_db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1RETEST0001",
+            page=1,
+            up_name="又一",
+            title="【直播回放】Re:测试综艺",
+            pub_date="2026-11-25",
+            subtitle_status="ok",
+        ),
+        [
+            SubtitleRow(up_name="又一", bvid="BV1RETEST0001", page=1, pub_date="2026-11-25", start_sec=1.0, end_sec=3.0, content="又一测试台词本人发言"),
+            SubtitleRow(up_name="又一", bvid="BV1RETEST0001", page=1, pub_date="2026-11-25", start_sec=4.0, end_sec=7.0, content="又一测试台词半句插嘴"),
+            SubtitleRow(up_name="又一", bvid="BV1RETEST0001", page=1, pub_date="2026-11-25", start_sec=8.0, end_sec=11.0, content="又一测试台词综艺原声"),
+        ],
+    )
+    local_db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1SOLOTEST1",
+            page=1,
+            up_name="又一",
+            title="【直播回放】普通杂谈",
+            pub_date="2026-11-24",
+            subtitle_status="ok",
+        ),
+        [
+            SubtitleRow(up_name="又一", bvid="BV1SOLOTEST1", page=1, pub_date="2026-11-24", start_sec=1.0, end_sec=3.0, content="又一测试台词未打分单播"),
+        ],
+    )
+
+    svc = SearchService(local_db)
+    win = svc.get_subtitle_window("BV1RETEST0001", 1)
+    ids = [x["id"] for x in win["items"]]
+    local_db.update_part_voiceprint_scores(
+        "BV1RETEST0001",
+        1,
+        [(ids[0], "host", 0.742, "又一"), (ids[1], "mixed", 0.546, "梨安"), (ids[2], "external", 0.182, "")],
+        status="done",
+    )
+
+    pub_app = create_app(db_path=legacy_db_path, enable_admin=False)
+    client = TestClient(pub_app)
+
+    all_hits = client.get("/api/v1/search", params={"q": "又一测试台词", "host_only": "false"}).json()
+    assert all_hits["pagination"]["total"] == 4
+
+    host_hits = client.get("/api/v1/search", params={"q": "又一测试台词", "host_only": "true"}).json()
+    # host_only 过滤掉 external，同时保留 host / mixed / 未打分 unknown
+    assert host_hits["pagination"]["total"] == 3
+    labels = {x["speaker_label"] for x in host_hits["items"]}
+    assert labels == {"host", "mixed", "unknown"}
+
+    # speaker_source 精细筛选：host / host_verified / external
+    src_verified = client.get(
+        "/api/v1/search", params={"q": "又一测试台词", "speaker_source": "host_verified"}
+    ).json()
+    assert src_verified["pagination"]["total"] == 2
+    assert {x["speaker_label"] for x in src_verified["items"]} == {"host", "mixed"}
+    assert {x["speaker_name"] for x in src_verified["items"]} == {"又一", "梨安"}
+
+    src_ext = client.get(
+        "/api/v1/search", params={"q": "又一测试台词", "speaker_source": "external"}
+    ).json()
+    assert src_ext["pagination"]["total"] == 1
+    assert src_ext["items"][0]["speaker_label"] == "external"
+
+    # 5. 验证 sync_delta 同步 voiceprint_status 与 speaker_label / speaker_sim
+    cloud_db = CorpusDB(tmp_path / "cloud_vp.db")
+    cloud_db.init_db()
+    delta_file = tmp_path / "vp_delta.json.gz"
+    exp = export_delta(local_db, build_manifest(cloud_db), delta_file)
+    assert exp["parts_new"] == 2
+    apply_delta(cloud_db, delta_file)
+
+    cloud_svc = SearchService(cloud_db)
+    c_host = cloud_svc.search(SearchQuery(q="又一测试台词", host_only=True))
+    assert c_host["pagination"]["total"] == 3
+    c_all = cloud_svc.search(SearchQuery(q="又一测试台词", host_only=False))
+    ext_items = [x for x in c_all["items"] if x["speaker_label"] == "external"]
+    assert len(ext_items) == 1
+    assert ext_items[0]["speaker_sim"] == pytest.approx(0.182, abs=1e-4)
+    assert ext_items[0]["speaker_name"] == ""
+    assert {x["speaker_name"] for x in c_all["items"] if x["speaker_label"] in ("host", "mixed")} == {
+        "又一",
+        "梨安",
+    }
+    assert cloud_db.get_video("BV1RETEST0001", 1)["voiceprint_status"] == "done"
+
+
+def test_manual_correction_locks_batch_review_revert_sync_and_public_isolation(tmp_path: Path) -> None:
+    from zhijiang_corpus.db import SubtitleRow, VideoRecord
+    from zhijiang_corpus.normalizer import append_literal_replace_rule, preview_literal_replace_rule
+    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
+
+    db_file = tmp_path / "manual_edit.db"
+    db = CorpusDB(db_file)
+    db.init_db()
+
+    db.save_video_and_subtitles(
+        VideoRecord(
+            bvid="BV1EDIT00001",
+            page=1,
+            up_name="恬豆",
+            title="【直播回放】四人团播测试",
+            pub_date="2026-11-26",
+            subtitle_status="ok",
+        ),
+        [
+            SubtitleRow(
+                up_name="恬豆",
+                bvid="BV1EDIT00001",
+                page=1,
+                pub_date="2026-11-26",
+                start_sec=10.0,
+                end_sec=13.0,
+                content="今天田豆包和大家一起玩游戏",
+            ),
+            SubtitleRow(
+                up_name="恬豆",
+                bvid="BV1EDIT00001",
+                page=1,
+                pub_date="2026-11-26",
+                start_sec=14.0,
+                end_sec=17.0,
+                content="这句其实是梨安在说话",
+            ),
+            SubtitleRow(
+                up_name="恬豆",
+                bvid="BV1EDIT00001",
+                page=1,
+                pub_date="2026-11-26",
+                start_sec=18.0,
+                end_sec=21.0,
+                content="这句也是电影原声台词",
+            ),
+        ],
+    )
+
+    svc = SearchService(db)
+    win = svc.get_subtitle_window("BV1EDIT00001", 1)
+    s0, s1, s2 = [x["id"] for x in win["items"]]
+    db.update_part_voiceprint_scores(
+        "BV1EDIT00001",
+        1,
+        [
+            (s0, "host", 0.72, "恬豆"),
+            (s1, "mixed", 0.51, "恬豆"),
+            (s2, "host", 0.48, "恬豆"),
+        ],
+        status="done",
+    )
+
+    # 1. 公网只读模式：/admin 及所有人工纠错写接口必须严格返回 404
+    pub_client = TestClient(create_app(db_path=db_file, enable_admin=False))
+    assert pub_client.get("/admin").status_code == 404
+    assert pub_client.patch(f"/api/v1/admin/subtitles/{s0}", json={"content": "非法写入"}).status_code == 404
+    assert pub_client.post(
+        "/api/v1/admin/subtitles/batch-speaker",
+        json={"subtitle_ids": [s1], "speaker_label": "external"},
+    ).status_code == 404
+    assert pub_client.get("/api/v1/admin/review/candidates").status_code == 404
+    assert pub_client.get("/api/v1/admin/edits").status_code == 404
+
+    # 2. 本地后台模式：/admin 可访问，单条修正字幕正文与声音来源
+    loc_client = TestClient(create_app(db_path=db_file, enable_admin=True))
+    assert loc_client.get("/admin").status_code == 200
+
+    # 边界校对队列应优先命中最接近 0.50 的 s1 (mixed, 0.51) 与 s2 (0.48)
+    rv = loc_client.get("/api/v1/admin/review/candidates", params={"mode": "uncertain"}).json()
+    assert rv["total"] == 2
+    assert {x["id"] for x in rv["items"]} == {s1, s2}
+
+    # 修改 s0 字幕正文（故意改成一个容易被规则命中的词，校验后续 normalize 不会覆盖人工锁定行）
+    r_edit0 = loc_client.patch(
+        f"/api/v1/admin/subtitles/{s0}",
+        json={"content": "今天田豆包精校保留测试", "note": "人工精校正文"},
+    )
+    assert r_edit0.status_code == 200
+    d_edit0 = r_edit0.json()
+    assert d_edit0["changed"] is True
+    assert d_edit0["subtitle"]["content_locked"] == 1
+    assert d_edit0["subtitle"]["speaker_locked"] == 0
+
+    # FTS5 触发器应已同步，立刻能搜到修订后的新词，且搜不到旧词
+    assert loc_client.get("/api/v1/search", params={"q": "精校保留测试", "fuzzy": "false"}).json()["pagination"]["total"] == 1
+    assert loc_client.get("/api/v1/search", params={"q": "一起玩游戏", "fuzzy": "false"}).json()["pagination"]["total"] == 0
+
+    # 批量修改 s1 -> 梨安原声，s2 -> external
+    r_edit1 = loc_client.patch(
+        f"/api/v1/admin/subtitles/{s1}",
+        json={"speaker_label": "host", "speaker_name": "梨安", "note": "团播实际是梨安"},
+    )
+    assert r_edit1.status_code == 200
+    assert r_edit1.json()["subtitle"]["speaker_locked"] == 1
+    assert r_edit1.json()["subtitle"]["speaker_name"] == "梨安"
+
+    r_batch = loc_client.post(
+        "/api/v1/admin/subtitles/batch-speaker",
+        json={"subtitle_ids": [s2], "speaker_label": "external", "note": "电影台词"},
+    )
+    assert r_batch.status_code == 200
+    assert r_batch.json()["updated"] == 1
+
+    # 3. 自动化保护锁校验：
+    # (a) 重跑声纹打分默认不得覆盖 s1 / s2 的人工锁定来源
+    db.update_part_voiceprint_scores(
+        "BV1EDIT00001",
+        1,
+        [
+            (s0, "host", 0.75, "恬豆"),
+            (s1, "external", 0.12, ""),
+            (s2, "host", 0.88, "恬豆"),
+        ],
+        status="done",
+    )
+    win_after_vp = {x["id"]: x for x in svc.get_subtitle_window("BV1EDIT00001", 1)["items"]}
+    assert win_after_vp[s1]["speaker_label"] == "host"
+    assert win_after_vp[s1]["speaker_name"] == "梨安"
+    assert win_after_vp[s2]["speaker_label"] == "external"
+
+    # (b) 批量词表清洗不得覆盖 s0 的人工锁定正文（田豆包在默认规则里本来会被改成恬豆包）
+    run_corpus_normalization(db, dry_run=False)
+    win_after_norm = {x["id"]: x for x in svc.get_subtitle_window("BV1EDIT00001", 1)["items"]}
+    assert win_after_norm[s0]["content"] == "今天田豆包精校保留测试"
+
+    # 4. 增量同步保留人工锁定状态与修正结果
+    cloud_db = CorpusDB(tmp_path / "cloud_edit.db")
+    cloud_db.init_db()
+    delta_file = tmp_path / "edit_delta.json.gz"
+    exp = export_delta(local_db := db, build_manifest(cloud_db), delta_file)
+    assert exp["parts_changed"] == 1
+    apply_delta(cloud_db, delta_file)
+    cloud_win = {x["id"]: x for x in SearchService(cloud_db).get_subtitle_window("BV1EDIT00001", 1)["items"]}
+    by_start = {round(x["start_sec"], 1): x for x in cloud_win.values()}
+    assert by_start[10.0]["content"] == "今天田豆包精校保留测试"
+    assert by_start[10.0]["content_locked"] == 1
+    assert by_start[14.0]["speaker_name"] == "梨安"
+    assert by_start[14.0]["speaker_locked"] == 1
+    assert by_start[18.0]["speaker_label"] == "external"
+
+    # 5. 审计日志查询与一键回滚
+    edits = loc_client.get("/api/v1/admin/edits", params={"bvid": "BV1EDIT00001"}).json()
+    assert edits["total"] == 3
+    edit1_id = r_edit1.json()["edit_id"]
+    rev = loc_client.post(f"/api/v1/admin/edits/{edit1_id}/revert")
+    assert rev.status_code == 200
+    assert rev.json()["subtitle"]["speaker_label"] == "mixed"
+    assert rev.json()["subtitle"]["speaker_locked"] == 0
+
+    # 6. 全局规则预览与写入测试（使用临时 rules 文件避免污染仓库配置）
+    tmp_rules = tmp_path / "rules.json"
+    prev = preview_literal_replace_rule(db, "电影原声", "影视原声")
+    assert prev["matched_count"] == 1
+    add_res = append_literal_replace_rule("电影原声", "影视原声", rules_path=tmp_rules)
+    assert add_res["status"] == "added"
+    norm2 = run_corpus_normalization(db, dry_run=False, rules_path=tmp_rules)
+    assert norm2["updated"] == 1
+    assert SearchService(db).search(SearchQuery(q="影视原声", fuzzy=False))["pagination"]["total"] == 1

@@ -79,6 +79,7 @@ def create_app(
     if enable_admin:
         app.include_router(build_admin_router(db))
 
+        @app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
         @app.get("/debug", response_class=HTMLResponse, include_in_schema=False)
         @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
         def debug_console() -> str:

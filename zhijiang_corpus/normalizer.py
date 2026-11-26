@@ -249,13 +249,16 @@ def run_corpus_normalization(
 
         with db.session() as conn:
             rows = conn.execute(
-                f"SELECT id, up_name, bvid, page, pub_date, content FROM subtitles WHERE id IN ({ph})",
+                f"SELECT id, up_name, bvid, page, pub_date, content, content_locked FROM subtitles WHERE id IN ({ph})",
                 chunk,
             ).fetchall()
 
             to_update: List[Tuple[str, str, int, str, int]] = []
             for r in rows:
                 sid = int(r["id"])
+                if int(r["content_locked"] or 0) == 1:
+                    unchanged_count += 1
+                    continue
                 up_name = str(r["up_name"])
                 pub_date = str(r["pub_date"] or "")
                 old_text = str(r["content"])
@@ -312,7 +315,138 @@ def run_corpus_normalization(
         "updated": updated_count,
         "dedup_deleted": dedup_deleted,
         "unchanged_protected": unchanged_count,
-        "elapsed_sec": elapsed,
         "rule_candidate_counts": probe_stats,
         "samples": samples,
+        "elapsed_sec": elapsed,
     }
+
+
+def preview_literal_replace_rule(
+    db: CorpusDB,
+    wrong_term: str,
+    right_term: str,
+    *,
+    sample_limit: int = 12,
+) -> Dict[str, Any]:
+    """预览一条「错词 -> 正确词」全局字面替换规则在当前数据库中的命中情况（跳过人工锁定行）."""
+    wrong = (wrong_term or "").strip()
+    right = (right_term or "").strip()
+    if not wrong or not right:
+        raise ValueError("错词与目标正确词均不能为空")
+    if wrong == right:
+        raise ValueError("错词与目标正确词不能相同")
+
+    fts_q = build_fts_query(wrong)
+    if not fts_q:
+        raise ValueError("错词不包含可索引的有效字符")
+
+    with db.session() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.id, s.up_name, s.bvid, s.page, s.pub_date, s.content, s.content_locked
+              FROM subtitles_fts f
+              CROSS JOIN subtitles s ON s.id = f.rowid
+             WHERE subtitles_fts MATCH ?
+            """,
+            (fts_q,),
+        ).fetchall()
+
+    matched_unlocked = 0
+    locked_skipped = 0
+    samples: List[Dict[str, str]] = []
+    for r in rows:
+        old_text = str(r["content"])
+        if wrong not in old_text:
+            continue
+        if int(r["content_locked"] or 0) == 1:
+            locked_skipped += 1
+            continue
+        matched_unlocked += 1
+        if len(samples) < sample_limit:
+            samples.append(
+                {
+                    "up": str(r["up_name"]),
+                    "bvid": str(r["bvid"]),
+                    "old": old_text,
+                    "new": old_text.replace(wrong, right),
+                }
+            )
+
+    return {
+        "wrong_term": wrong,
+        "right_term": right,
+        "matched_count": matched_unlocked,
+        "locked_skipped": locked_skipped,
+        "samples": samples,
+    }
+
+
+def append_literal_replace_rule(
+    wrong_term: str,
+    right_term: str,
+    *,
+    note: str = "",
+    rules_path: Path = DEFAULT_RULES_PATH,
+) -> Dict[str, Any]:
+    """将高频错词安全追加到 config/correction_rules.json（若同 target 已存在自定义规则则合并）."""
+    wrong = (wrong_term or "").strip()
+    right = (right_term or "").strip()
+    if not wrong or not right:
+        raise ValueError("错词与目标正确词均不能为空")
+    if wrong == right:
+        raise ValueError("错词与目标正确词不能相同")
+
+    if rules_path.exists():
+        raw = json.loads(rules_path.read_text(encoding="utf-8"))
+    else:
+        raw = {"version": "1.1", "description": "人工纠错规则表", "replace_rules": [], "fuzzy_groups": []}
+
+    rules = raw.setdefault("replace_rules", [])
+    escaped_wrong = re.escape(wrong)
+
+    # 检查是否已存在完全一致的规则探针
+    for r in rules:
+        if str(r.get("target")) == right and wrong in (r.get("fts_probes") or []):
+            return {"status": "exists", "rule_id": r.get("id"), "wrong_term": wrong, "right_term": right}
+
+    # 查找是否已有同 target 的 manual 规则可以合并
+    manual_id = f"manual_{abs(hash(right)) % 1000000}"
+    merged = False
+    for r in rules:
+        if str(r.get("id", "")).startswith("manual_") and str(r.get("target")) == right:
+            probes = list(r.get("fts_probes") or [])
+            if wrong not in probes:
+                probes.append(wrong)
+            r["fts_probes"] = probes
+            existing_pat = str(r.get("pattern") or "")
+            parts = [p for p in existing_pat.split("|") if p]
+            if escaped_wrong not in parts:
+                parts.append(escaped_wrong)
+            r["pattern"] = "|".join(parts)
+            if note:
+                r["note"] = note
+            manual_id = str(r["id"])
+            merged = True
+            break
+
+    if not merged:
+        existing_ids = {str(r.get("id")) for r in rules}
+        idx = 1
+        while manual_id in existing_ids:
+            manual_id = f"manual_{abs(hash(right)) % 1000000}_{idx}"
+            idx += 1
+        rules.append(
+            {
+                "id": manual_id,
+                "tier": 1,
+                "target": right,
+                "pattern": escaped_wrong,
+                "fts_probes": [wrong],
+                "note": note or f"人工校对沉淀：{wrong} -> {right}",
+            }
+        )
+
+    rules_path.parent.mkdir(parents=True, exist_ok=True)
+    rules_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    load_rules.cache_clear()
+    return {"status": "added" if not merged else "merged", "rule_id": manual_id, "wrong_term": wrong, "right_term": right}

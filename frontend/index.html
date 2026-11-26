@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="四禧丸子直播语料库检索：覆盖沐霂、又一、恬豆、梨安直播回放 AI 字幕，面向二创剪辑与粉丝的毫秒级台词与热梗检索工具。" />
   <title>四禧丸子直播语料库 · 直播回放台词与热梗检索</title>
-  <link rel="stylesheet" href="./styles.css?v=20261127b" />
+  <link rel="stylesheet" href="./styles.css?v=20261127g" />
 </head>
 <body>
   <div class="spectrum-bar" aria-hidden="true"></div>
@@ -95,6 +95,15 @@
           </select>
         </label>
 
+        <label class="filter-item" title="按四位成员声纹识别结果筛选台词声音来源">
+          <span>声音来源</span>
+          <select id="speakerSourceFilter">
+            <option value="all" selected>全部来源</option>
+            <option value="host">仅主播原声</option>
+            <option value="external">仅主播无关音轨</option>
+          </select>
+        </label>
+
         <label class="fuzzy-check" title="自动同时匹配同音字与常见别称，例如搜 四禧丸子 同时命中 四喜丸子，搜 小沐标 同时命中 小目标">
           <input id="fuzzyToggle" type="checkbox" checked />
           <span>同音/别称模糊扩展</span>
@@ -117,7 +126,7 @@
       </div>
 
       <div class="notice-banner" role="note">
-        <strong>检索提示：</strong>请核对直播形式，电影回、团播、电台回或连麦联动等可能会因为 BGM 人声 / 多人发言而导致字幕与实际发言人不对应。
+        <strong>检索提示：</strong>已通过四成员声纹识别的场次会在台词卡片上标注「<strong>某某原声</strong> / <strong>主播无关音轨</strong>」，可使用上方「声音来源」筛选；未识别的早期回放请结合原片核对发言人。
       </div>
 
       <div class="stats-strip">
@@ -209,6 +218,6 @@
   </div>
 
   <script src="./config.js?v=20261127c"></script>
-  <script src="./app.js?v=20261127c"></script>
+  <script src="./app.js?v=20261127g"></script>
 </body>
 </html>

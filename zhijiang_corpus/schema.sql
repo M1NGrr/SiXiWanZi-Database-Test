@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS videos (
     scene_reason      TEXT    NOT NULL DEFAULT '',       -- 规则初筛依据（JSON 摘要）
     scene_locked      INTEGER NOT NULL DEFAULT 0,        -- 1=人工确认锁定，自动初筛不覆盖
     is_visible        INTEGER NOT NULL DEFAULT 1,        -- 1=可见，0=隐藏/软删除
+    voiceprint_status TEXT    NOT NULL DEFAULT 'none',   -- none | done | skipped
     extra_meta        TEXT    NOT NULL DEFAULT '{}',     -- 扩展字段（JSON：简介摘要、识别到的出场成员等）
     created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -60,6 +61,11 @@ CREATE TABLE IF NOT EXISTS subtitles (
     scene_type        TEXT    NOT NULL DEFAULT 'unknown',
     is_visible        INTEGER NOT NULL DEFAULT 1,
     source            TEXT    NOT NULL DEFAULT 'bilibili_ai', -- bilibili_ai | bilibili_cc | local_import | whisper
+    speaker_label     TEXT    NOT NULL DEFAULT 'unknown',     -- unknown | host | mixed | external
+    speaker_name      TEXT    NOT NULL DEFAULT '',            -- 匹配到的成员简称（沐霂/又一/恬豆/梨安），无关音轨或未打分为空
+    speaker_sim       REAL,                                   -- CAM++ 最佳声纹相似度（未打分为 NULL）
+    content_locked    INTEGER NOT NULL DEFAULT 0,             -- 1=字幕正文已人工校对锁定，自动规则清洗不覆盖
+    speaker_locked    INTEGER NOT NULL DEFAULT 0,             -- 1=声音来源已人工校对锁定，重跑声纹打分不覆盖
     created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     -- 去重约束：同一视频同一分 P 下相同起止时间与文本不重复插入
     UNIQUE (bvid, page, start_sec, end_sec, content)
@@ -120,3 +126,29 @@ CREATE TABLE IF NOT EXISTS ingest_logs (
 
 CREATE INDEX IF NOT EXISTS idx_ingest_logs_bvid
     ON ingest_logs (bvid, created_at DESC);
+
+
+-- 5. 人工校对审计与回滚日志表（主表零原文冗余，支持回滚与重放补丁）
+CREATE TABLE IF NOT EXISTS subtitle_edits (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    subtitle_id       INTEGER NOT NULL,
+    bvid              TEXT    NOT NULL,
+    page              INTEGER NOT NULL DEFAULT 1,
+    start_sec         REAL    NOT NULL,
+    end_sec           REAL    NOT NULL,
+    edit_type         TEXT    NOT NULL,                  -- text | speaker | both | revert
+    old_content       TEXT    NOT NULL DEFAULT '',
+    new_content       TEXT    NOT NULL DEFAULT '',
+    old_speaker_label TEXT    NOT NULL DEFAULT 'unknown',
+    old_speaker_name  TEXT    NOT NULL DEFAULT '',
+    new_speaker_label TEXT    NOT NULL DEFAULT 'unknown',
+    new_speaker_name  TEXT    NOT NULL DEFAULT '',
+    note              TEXT    NOT NULL DEFAULT '',
+    created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_subtitle_edits_sub_id
+    ON subtitle_edits (subtitle_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_subtitle_edits_bvid
+    ON subtitle_edits (bvid, page, id DESC);

@@ -15,8 +15,6 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "up_list.json"
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "zhijiang_subtitles.db"
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
-VALID_SCENE_TYPES = ("unknown", "solo", "duo", "group", "special")
-
 # 启动时自动加载项目根目录 .env（如存在）
 load_dotenv(ENV_FILE_PATH, override=False)
 
