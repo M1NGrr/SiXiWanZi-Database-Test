@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 枝江数据库 — Ubuntu 22.04/24.04 云端公网只读服务一键部署脚本
+# 四禧丸子直播语料库 — Ubuntu 22.04/24.04 云端公网只读服务一键部署脚本
 # 用法（在服务器上以 root 运行）：
-#   bash /opt/zhijiang/scripts/deploy_cloud.sh
+#   bash /opt/sixiwanzi/scripts/deploy_cloud.sh
 # 或首次直接：
-#   curl -fsSL https://raw.githubusercontent.com/RicojrH/zhijiang-database/main/scripts/deploy_cloud.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/M1NGrr/SiXiWanZi-Database-Test/main/scripts/deploy_cloud.sh | sudo bash
 
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/RicojrH/zhijiang-database.git}"
-APP_DIR="${APP_DIR:-/opt/zhijiang}"
+REPO_URL="${REPO_URL:-https://github.com/M1NGrr/SiXiWanZi-Database-Test.git}"
+APP_DIR="${APP_DIR:-/opt/sixiwanzi}"
 WORKERS="${WORKERS:-2}"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -49,21 +49,21 @@ fi
 "${APP_DIR}/.venv/bin/pip" install -r "${APP_DIR}/requirements.txt" -q
 
 echo "==> [5/7] 检查并解压数据库文件"
-if [ -f "${APP_DIR}/data/zhijiang_subtitles.db.tar.gz" ]; then
-  echo "    发现压缩包，正在解压到 ${APP_DIR}/data/zhijiang_subtitles.db ..."
-  tar -xzf "${APP_DIR}/data/zhijiang_subtitles.db.tar.gz" -C "${APP_DIR}/data"
-  rm -f "${APP_DIR}/data/zhijiang_subtitles.db.tar.gz"
+if [ -f "${APP_DIR}/data/sixiwanzi_subtitles.db.tar.gz" ]; then
+  echo "    发现压缩包，正在解压到 ${APP_DIR}/data/sixiwanzi_subtitles.db ..."
+  tar -xzf "${APP_DIR}/data/sixiwanzi_subtitles.db.tar.gz" -C "${APP_DIR}/data"
+  rm -f "${APP_DIR}/data/sixiwanzi_subtitles.db.tar.gz"
   echo "    解压完成并已清理压缩包。"
-elif [ -f "${APP_DIR}/data/zhijiang_subtitles.db" ]; then
-  echo "    已检测到现有数据库 ${APP_DIR}/data/zhijiang_subtitles.db"
+elif [ -f "${APP_DIR}/data/sixiwanzi_subtitles.db" ]; then
+  echo "    已检测到现有数据库 ${APP_DIR}/data/sixiwanzi_subtitles.db"
 else
-  echo "    [提示] 尚未上传数据库文件，服务将先以空库启动；上传解压后执行 systemctl restart zhijiang-api 即可生效。"
+  echo "    [提示] 尚未上传数据库文件，服务将先以空库启动；上传解压后执行 systemctl restart sixiwanzi-api 即可生效。"
 fi
 
-echo "==> [6/7] 配置并启动 systemd 只读后端服务 (zhijiang-api)"
-cat > /etc/systemd/system/zhijiang-api.service <<EOF
+echo "==> [6/7] 配置并启动 systemd 只读后端服务 (sixiwanzi-api)"
+cat > /etc/systemd/system/sixiwanzi-api.service <<EOF
 [Unit]
-Description=Zhijiang Subtitle Corpus Public Read-Only API
+Description=SiXiWanZi Subtitle Corpus Public Read-Only API
 After=network.target
 
 [Service]
@@ -71,9 +71,9 @@ Type=simple
 WorkingDirectory=${APP_DIR}
 Environment="ZJ_ENABLE_ADMIN=0"
 Environment="ZJ_SERVE_FRONTEND=1"
-Environment="ZJ_DB_PATH=${APP_DIR}/data/zhijiang_subtitles.db"
+Environment="ZJ_DB_PATH=${APP_DIR}/data/sixiwanzi_subtitles.db"
 Environment="ZJ_CORS_ORIGINS=*"
-Environment="ZJ_GITHUB_URL=https://github.com/RicojrH/zhijiang-database"
+Environment="ZJ_GITHUB_URL=https://github.com/M1NGrr/SiXiWanZi-Database-Test"
 ExecStart=${APP_DIR}/.venv/bin/uvicorn backend.app:public_app --host 127.0.0.1 --port 8000 --workers ${WORKERS}
 Restart=always
 RestartSec=3
@@ -83,11 +83,11 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable zhijiang-api
-systemctl restart zhijiang-api
+systemctl enable sixiwanzi-api
+systemctl restart sixiwanzi-api
 
 echo "==> [7/7] 配置 Nginx 80 端口反向代理（开启 gzip 压缩提速）"
-cat > /etc/nginx/sites-available/zhijiang <<'EOF'
+cat > /etc/nginx/sites-available/sixiwanzi <<'EOF'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -111,7 +111,7 @@ server {
 EOF
 
 rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/zhijiang /etc/nginx/sites-enabled/zhijiang
+ln -sf /etc/nginx/sites-available/sixiwanzi /etc/nginx/sites-enabled/sixiwanzi
 nginx -t
 systemctl enable nginx
 systemctl restart nginx

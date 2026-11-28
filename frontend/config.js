@@ -5,7 +5,7 @@
  * 2. 前后端分域部署（如前端放 Cloudflare Pages / Vercel，后端在云主机）：
  *    将 API_BASE 改为你的后端域名，例如 "https://api.example.com"（末尾不要加斜杠）
  */
-window.ZHIJIANG_CONFIG = {
+window.SIXIWANZI_CONFIG = {
   API_BASE: "",
   AUTHOR_NAME: "M1NG",
   // 若后续有个人主页链接可填写于此，留空时展示纯文本署名

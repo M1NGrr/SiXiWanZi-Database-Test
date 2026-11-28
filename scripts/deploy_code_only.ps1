@@ -7,8 +7,8 @@ Set-Location $Root
 $ConfFile = Join-Path $Root ".cloud_sync.env"
 $Conf = @{
     CLOUD_HOST    = ""
-    CLOUD_APP_DIR = "/opt/zhijiang"
-    PUBLIC_URL    = "https://zjdb.mprlzy.top"
+    CLOUD_APP_DIR = "/opt/sixiwanzi"
+    PUBLIC_URL    = ""
 }
 if (Test-Path $ConfFile) {
     Get-Content $ConfFile -Encoding UTF8 | ForEach-Object {
@@ -34,7 +34,7 @@ $null = Get-Content $AnnFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $AnnB64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($AnnFile))
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " 枝江数据库 · 仅发布线上代码与公告（不上传本地数据库）" -ForegroundColor Cyan
+Write-Host " 四禧丸子直播语料库 · 仅发布线上代码与公告（不上传本地数据库）" -ForegroundColor Cyan
 Write-Host " 目标服务器: $CloudHost ($CloudAppDir)" -ForegroundColor Gray
 Write-Host " 公开站点:   $PublicUrl" -ForegroundColor Gray
 Write-Host "========================================================`n" -ForegroundColor Cyan
@@ -46,7 +46,7 @@ git checkout -- config/announcements.json 2>/dev/null || true
 git pull --ff-only origin main
 mkdir -p config
 printf '%s' '$AnnB64' | base64 -d > config/announcements.json
-SVC=`$(systemctl list-unit-files --type=service --no-legend | awk '{print `$1}' | grep -iE 'zhijiang|zjdb' | head -n 1 || true)
+SVC=`$(systemctl list-unit-files --type=service --no-legend | awk '{print `$1}' | grep -iE 'sixiwanzi|zhijiang|zjdb' | head -n 1 || true)
 if [ -n "`$SVC" ]; then
   echo "[remote] restarting `$SVC ..."
   systemctl restart "`$SVC"

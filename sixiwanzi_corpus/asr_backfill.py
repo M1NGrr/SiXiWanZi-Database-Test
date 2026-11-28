@@ -33,7 +33,7 @@ from .db import CorpusDB, SubtitleRow, VideoRecord
 
 ProgressCallback = Callable[[str], None]
 
-DEFAULT_ZHIJIANG_PROMPT = (
+DEFAULT_SIXIWANZI_PROMPT = (
     "以下是B站虚拟偶像沐霂、又一、恬豆、梨安"
     "（四禧丸子、小沐标、酥酥又、恬豆包、向心梨、大沐博士、王又一、陈恬豆、大梨老师）的中文直播回放字幕。"
 )
@@ -425,7 +425,7 @@ class LocalWhisperEngine:
         self,
         audio_path: Path,
         *,
-        initial_prompt: str = DEFAULT_ZHIJIANG_PROMPT,
+        initial_prompt: str = DEFAULT_SIXIWANZI_PROMPT,
         language: str = "zh",
         up_name: Optional[str] = None,
         pub_date: Optional[str] = None,
@@ -798,7 +798,7 @@ def run_asr_backfill(
                 continue
 
             try:
-                prompt = f"{DEFAULT_ZHIJIANG_PROMPT} 当前场次主播：{cur_up}，标题：{cur_title[:40]}。"
+                prompt = f"{DEFAULT_SIXIWANZI_PROMPT} 当前场次主播：{cur_up}，标题：{cur_title[:40]}。"
                 cleaned_items, asr_sec = engine.transcribe_file(
                     job.wav_path,
                     initial_prompt=prompt,

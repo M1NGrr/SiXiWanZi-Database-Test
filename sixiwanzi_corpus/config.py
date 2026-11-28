@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "up_list.json"
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "zhijiang_subtitles.db"
+DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "sixiwanzi_subtitles.db"
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 # 启动时自动加载项目根目录 .env（如存在）

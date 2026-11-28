@@ -61,14 +61,16 @@
 ├── config/
 │   ├── up_list.json             # 4 位成员 UID、应援色、粉丝名与「直播回放」列表 ID
 │   ├── correction_rules.json    # Tier 1/2 专有名词纠错规则与 Tier 3 同音模糊词表
+│   ├── voiceprints.json         # 4 位成员 CAM++ 声纹特征库
 │   └── announcements.json       # 站点公告与更新动态（实时生效）
-├── zhijiang_corpus/             # 核心数据层（沿用上游包名以便参考与同步上游修复）
+├── sixiwanzi_corpus/            # 核心数据层（检索、抓取、GPU ASR 补录、声纹打分、增量同步）
 ├── scripts/                     # 本地 GPU 补录、代码部署与云端增量同步脚本
 ├── tests/
 │   └── test_pipeline.py         # 端到端单元测试
 ├── DEPLOY.md                    # 云端公网部署参考教程
 ├── requirements.txt             # 核心与云端后端轻量依赖
-└── requirements-asr.txt         # 本地 GPU Whisper 补录可选依赖
+├── requirements-asr.txt         # 本地 GPU Whisper 补录可选依赖
+└── requirements-sv.txt          # 本地 GPU CAM++ 声纹识别可选依赖
 ```
 
 ---
@@ -91,9 +93,9 @@ python run.py ingest-up all --limit 5
 # 4. 可选：为无自带字幕分 P 启用本地 GPU Whisper 补录（需先安装 requirements-asr.txt）
 python run.py backfill-asr --limit 0
 
-# 5. 专有名词纠错 + 场景初筛 + FTS5 索引优化
+# 5. 专有名词纠错 + 可选四成员声纹识别（需先安装 requirements-sv.txt）+ FTS5 索引优化
 python run.py normalize-corpus
-python run.py tag-scenes --only-unknown
+python run.py score-voiceprints --all-parts --limit 0
 python run.py optimize-db
 
 # 6. 启动本地服务（公开前端: http://127.0.0.1:8000/  本地运维台: http://127.0.0.1:8000/debug）

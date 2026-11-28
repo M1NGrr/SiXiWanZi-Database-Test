@@ -26,8 +26,8 @@ if (-not (Test-Path $Py)) {
 $ConfFile = Join-Path $Root ".cloud_sync.env"
 $Conf = @{
     CLOUD_HOST    = ""
-    CLOUD_APP_DIR = "/opt/zhijiang"
-    PUBLIC_URL    = "https://zjdb.mprlzy.top"
+    CLOUD_APP_DIR = "/opt/sixiwanzi"
+    PUBLIC_URL    = ""
     INGEST_LIMIT  = "$Limit"
 }
 if (Test-Path $ConfFile) {
@@ -68,7 +68,7 @@ if ($PSBoundParameters.ContainsKey("Limit")) {
 }
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " 枝江数据库 · 本地增量更新 & 极速热同步上云" -ForegroundColor Cyan
+Write-Host " 四禧丸子直播语料库 · 本地增量更新 & 极速热同步上云" -ForegroundColor Cyan
 Write-Host " 目标服务器: $CloudHost ($CloudAppDir)" -ForegroundColor Gray
 Write-Host " 公开站点:   $PublicUrl" -ForegroundColor Gray
 Write-Host "========================================================`n" -ForegroundColor Cyan
@@ -107,7 +107,7 @@ if (-not $SyncOnly -and -not $SkipIngest) {
 # ── 第 2 步：远程清单比对 + 生成增量补丁包（仅几百 KB ~ 几 MB） ──
 Write-Host "`n==> [4/4] 拉取云端数据清单并计算极速增量补丁..." -ForegroundColor Cyan
 $ManifestFile = Join-Path $Root "data\tmp_asr\remote_manifest.json"
-$DeltaFile    = Join-Path $Root "data\tmp_asr\zhijiang_delta.json.gz"
+$DeltaFile    = Join-Path $Root "data\tmp_asr\sixiwanzi_delta.json.gz"
 Remove-Item -Force -ErrorAction SilentlyContinue $ManifestFile, $DeltaFile
 
 # 先确保云端代码已包含最新增量同步命令，再拉取清单
@@ -133,11 +133,11 @@ if ([int]$ExportInfo.parts_changed -eq 0) {
 
 # ── 第 3 步：秒传小补丁到香港服务器并 WAL 热写入（零停服） ──
 Write-Host "`n    正在上传增量补丁 ($($ExportInfo.delta_size_kb) KB) 到 $CloudHost ..." -ForegroundColor Cyan
-& scp $DeltaFile "${CloudHost}:/tmp/zhijiang_delta.json.gz"
+& scp $DeltaFile "${CloudHost}:/tmp/sixiwanzi_delta.json.gz"
 if ($LASTEXITCODE -ne 0) { throw "SCP 上传补丁失败。" }
 
 Write-Host "    正在云端热合并入库并增量更新 FTS5 索引（不中断公网访问）..." -ForegroundColor Cyan
-$ApplyOut = & ssh $CloudHost "cd $CloudAppDir && .venv/bin/python run.py apply-delta /tmp/zhijiang_delta.json.gz && rm -f /tmp/zhijiang_delta.json.gz"
+$ApplyOut = & ssh $CloudHost "cd $CloudAppDir && .venv/bin/python run.py apply-delta /tmp/sixiwanzi_delta.json.gz && rm -f /tmp/sixiwanzi_delta.json.gz"
 if ($LASTEXITCODE -ne 0) { throw "云端合并补丁失败。" }
 $ApplyInfo = ($ApplyOut -join "`n") | ConvertFrom-Json
 

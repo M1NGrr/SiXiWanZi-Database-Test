@@ -16,17 +16,17 @@ import qrcode.image.svg
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from zhijiang_corpus.bilibili_client import BilibiliClient
-from zhijiang_corpus.clip_planner import plan_clip_job
-from zhijiang_corpus.config import load_config, save_cookie_to_env
-from zhijiang_corpus.db import CorpusDB
-from zhijiang_corpus.ingest import ingest_bvids, ingest_from_up
-from zhijiang_corpus.normalizer import (
+from sixiwanzi_corpus.bilibili_client import BilibiliClient
+from sixiwanzi_corpus.clip_planner import plan_clip_job
+from sixiwanzi_corpus.config import load_config, save_cookie_to_env
+from sixiwanzi_corpus.db import CorpusDB
+from sixiwanzi_corpus.ingest import ingest_bvids, ingest_from_up
+from sixiwanzi_corpus.normalizer import (
     append_literal_replace_rule,
     preview_literal_replace_rule,
     run_corpus_normalization,
 )
-from zhijiang_corpus.search import build_bilibili_jump_url, format_sec_hms
+from sixiwanzi_corpus.search import build_bilibili_jump_url, format_sec_hms
 
 
 class VisibilityPatchRequest(BaseModel):
@@ -53,7 +53,7 @@ class ClipPlanRequest(BaseModel):
     pad_before_sec: float = Field(default=1.5, ge=0.0, le=30.0)
     pad_after_sec: float = Field(default=1.5, ge=0.0, le=30.0)
     merge_gap_sec: float = Field(default=3.0, ge=0.0, le=60.0)
-    output_name: str = Field(default="zhijiang_compilation.mp4")
+    output_name: str = Field(default="sixiwanzi_compilation.mp4")
 
 
 class SubtitleEditRequest(BaseModel):

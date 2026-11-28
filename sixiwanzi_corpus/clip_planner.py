@@ -37,7 +37,7 @@ def plan_clip_job(
     pad_before_sec: float = 1.5,
     pad_after_sec: float = 1.5,
     merge_gap_sec: float = 3.0,
-    output_name: str = "zhijiang_compilation.mp4",
+    output_name: str = "sixiwanzi_compilation.mp4",
 ) -> Dict[str, Any]:
     """根据命中的字幕 ID 或自定义区间，生成可交由 FFmpeg Worker 执行的切片/合并清单."""
     raw_items: List[RawClipRequest] = []

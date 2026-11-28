@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Query, Response
 
-from zhijiang_corpus.config import AppConfig, PROJECT_ROOT
-from zhijiang_corpus.db import CorpusDB
-from zhijiang_corpus.search import SearchQuery, SearchService
+from sixiwanzi_corpus.config import AppConfig, PROJECT_ROOT
+from sixiwanzi_corpus.db import CorpusDB
+from sixiwanzi_corpus.search import SearchQuery, SearchService
 
 
 def _load_announcements() -> List[Dict[str, Any]]:

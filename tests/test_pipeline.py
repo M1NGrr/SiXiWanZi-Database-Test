@@ -9,27 +9,27 @@ from typing import Any, Dict, List
 import pytest
 from fastapi.testclient import TestClient
 
-from zhijiang_corpus.api import create_app
-from zhijiang_corpus.asr_backfill import (
+from sixiwanzi_corpus.api import create_app
+from sixiwanzi_corpus.asr_backfill import (
     _is_whisper_hallucination,
     _sanitize_asr_text,
     _split_text_proportionally,
     list_no_subtitle_targets,
     resplit_legacy_asr,
 )
-from zhijiang_corpus.bilibili_client import SubtitleTrack, VideoInfo, VideoPageInfo
-from zhijiang_corpus.cleaner import clean_bcc_payload, clean_srt_text
-from zhijiang_corpus.clip_planner import plan_clip_job
-from zhijiang_corpus.config import load_config
-from zhijiang_corpus.db import CorpusDB
-from zhijiang_corpus.ingest import ingest_bvids, ingest_local_file, seed_demo_data
-from zhijiang_corpus.normalizer import (
+from sixiwanzi_corpus.bilibili_client import SubtitleTrack, VideoInfo, VideoPageInfo
+from sixiwanzi_corpus.cleaner import clean_bcc_payload, clean_srt_text
+from sixiwanzi_corpus.clip_planner import plan_clip_job
+from sixiwanzi_corpus.config import load_config
+from sixiwanzi_corpus.db import CorpusDB
+from sixiwanzi_corpus.ingest import ingest_bvids, ingest_local_file, seed_demo_data
+from sixiwanzi_corpus.normalizer import (
     apply_domain_corrections,
     build_fuzzy_fts_query,
     run_corpus_normalization,
 )
-from zhijiang_corpus.search import SearchQuery, SearchService
-from zhijiang_corpus.wbi import extract_wbi_keys, sign_wbi_params
+from sixiwanzi_corpus.search import SearchQuery, SearchService
+from sixiwanzi_corpus.wbi import extract_wbi_keys, sign_wbi_params
 
 
 def test_wbi_signing_deterministic() -> None:
@@ -327,7 +327,7 @@ def test_asr_backfill_helpers(tmp_path: Path) -> None:
     db_file = tmp_path / "asr_helper.db"
     db = CorpusDB(db_file)
     db.init_db()
-    from zhijiang_corpus.db import VideoRecord
+    from sixiwanzi_corpus.db import VideoRecord
 
     # 写入一个 3 秒碎片和一个 600 秒正常无字幕分 P
     db.save_video_and_subtitles(
@@ -380,7 +380,7 @@ def test_asr_backfill_helpers(tmp_path: Path) -> None:
     assert all(len(text) <= 28 for _, _, text in pieces_u)
 
     # 校验 resplit_legacy_asr 仅重切旧版 ASR 且保留 asr-large-v3-turbo 标记供 GPU 重录识别
-    from zhijiang_corpus.db import SubtitleRow
+    from sixiwanzi_corpus.db import SubtitleRow
 
     db.save_video_and_subtitles(
         VideoRecord(
@@ -490,7 +490,7 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
     db_file = tmp_path / "norm.db"
     db = CorpusDB(db_file)
     db.init_db()
-    from zhijiang_corpus.db import SubtitleRow, VideoRecord
+    from sixiwanzi_corpus.db import SubtitleRow, VideoRecord
 
     db.save_video_and_subtitles(
         VideoRecord(bvid="BV1NORM00001", page=1, up_name="沐霂", pub_date="2026-01-01", subtitle_status="ok"),
@@ -520,8 +520,8 @@ def test_domain_normalization_and_fuzzy_search(tmp_path: Path) -> None:
 
 
 def test_incremental_delta_sync_and_live_stats(tmp_path: Path) -> None:
-    from zhijiang_corpus.db import SubtitleRow, VideoRecord
-    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
+    from sixiwanzi_corpus.db import SubtitleRow, VideoRecord
+    from sixiwanzi_corpus.sync_delta import apply_delta, build_manifest, export_delta
 
     local_db = CorpusDB(tmp_path / "local.db")
     cloud_db = CorpusDB(tmp_path / "cloud.db")
@@ -578,9 +578,9 @@ def test_incremental_delta_sync_and_live_stats(tmp_path: Path) -> None:
 
 def test_voiceprint_classification_host_only_search_migration_and_sync(tmp_path: Path) -> None:
     import sqlite3
-    from zhijiang_corpus.db import SubtitleRow, VideoRecord
-    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
-    from zhijiang_corpus.voiceprint import (
+    from sixiwanzi_corpus.db import SubtitleRow, VideoRecord
+    from sixiwanzi_corpus.sync_delta import apply_delta, build_manifest, export_delta
+    from sixiwanzi_corpus.voiceprint import (
         DEFAULT_VOICEPRINTS_PATH,
         classify_utterance_scores,
         is_re_watch_title,
@@ -777,9 +777,9 @@ def test_voiceprint_classification_host_only_search_migration_and_sync(tmp_path:
 
 
 def test_manual_correction_locks_batch_review_revert_sync_and_public_isolation(tmp_path: Path) -> None:
-    from zhijiang_corpus.db import SubtitleRow, VideoRecord
-    from zhijiang_corpus.normalizer import append_literal_replace_rule, preview_literal_replace_rule
-    from zhijiang_corpus.sync_delta import apply_delta, build_manifest, export_delta
+    from sixiwanzi_corpus.db import SubtitleRow, VideoRecord
+    from sixiwanzi_corpus.normalizer import append_literal_replace_rule, preview_literal_replace_rule
+    from sixiwanzi_corpus.sync_delta import apply_delta, build_manifest, export_delta
 
     db_file = tmp_path / "manual_edit.db"
     db = CorpusDB(db_file)

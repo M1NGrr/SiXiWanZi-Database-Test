@@ -21,8 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from zhijiang_corpus.config import PROJECT_ROOT, load_config
-from zhijiang_corpus.db import CorpusDB
+from sixiwanzi_corpus.config import PROJECT_ROOT, load_config
+from sixiwanzi_corpus.db import CorpusDB
 
 from .routers.admin import build_admin_router
 from .routers.public import build_public_router
@@ -117,7 +117,7 @@ def create_app(
         @app.get("/", include_in_schema=False)
         def public_root() -> dict[str, str]:
             return {
-                "service": "zhijiang-subtitle-backend",
+                "service": "sixiwanzi-subtitle-backend",
                 "mode": "public_read_only" if not enable_admin else "local_admin",
                 "docs": "/docs",
                 "health": "/api/v1/health",

@@ -487,8 +487,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="zhijiang-corpus",
-        description="枝江直播回放 AI 字幕语料库与检索工具（第一阶段本地原型）",
+        prog="sixiwanzi-corpus",
+        description="四禧丸子直播回放 AI 字幕语料库与检索工具",
     )
     parser.add_argument("--db", default=None, help="SQLite 数据库文件路径（默认读 ZJ_DB_PATH）")
     sub = parser.add_subparsers(dest="command", required=True)

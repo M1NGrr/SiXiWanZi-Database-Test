@@ -8,20 +8,20 @@
 
 ## 一、开源到 GitHub（不含数据库与 Cookie）
 
-> 2.12 GB 的 `zhijiang_subtitles.db` 超过 GitHub 单文件 100 MB 硬限制，**不放进 Git 仓库**（`.gitignore` 已自动排除 `.env`、`data/*.db*`、`data/cache/`、`data/tmp_asr/`、`.venv/`）。GitHub 只开源代码、建库 Schema、纠错词表与前后端。
+> `sixiwanzi_subtitles.db` 体积超过 GitHub 单文件 100 MB 硬限制，**不放进 Git 仓库**（`.gitignore` 已自动排除 `.env`、`data/*.db*`、`data/cache/`、`data/tmp_asr/`、`data/models/`、`.venv/`）。GitHub 只开源代码、建库 Schema、纠错词表与前后端。
 
-1. 在浏览器打开 https://github.com/new ，新建一个公开仓库（例如命名为 `zhijiang-database`），**不要**勾选初始化 README / LICENSE（本地已准备好）。
+1. 在浏览器打开 https://github.com/new ，新建一个公开仓库（例如命名为 `SiXiWanZi-Database-Test`），**不要**勾选初始化 README / LICENSE（本地已准备好）。
 2. 在项目根目录运行：
 
 ```powershell
-git remote add origin https://github.com/RicojrH/zhijiang-database.git
+git remote add origin https://github.com/M1NGrr/SiXiWanZi-Database-Test.git
 git branch -M main
 git push -u origin main
 ```
 
 3. 推完后，把你的仓库地址填进以下任意一处，前端「关于与作者」页就会自动显示可点击的 GitHub 链接：
    - 前端：[frontend/config.js](frontend/config.js) 中的 `GITHUB_REPO_URL`
-   - 或云端环境变量：`ZJ_GITHUB_URL=https://github.com/<你的GitHub用户名>/zhijiang-database`
+   - 或云端环境变量：`ZJ_GITHUB_URL=https://github.com/M1NGrr/SiXiWanZi-Database-Test`
 
 ---
 
@@ -47,46 +47,46 @@ git push -u origin main
 
 ```bash
 # 服务器上拉取你刚推送的 GitHub 仓库
-git clone https://github.com/RicojrH/zhijiang-database.git /opt/zhijiang
-cd /opt/zhijiang
+git clone https://github.com/M1NGrr/SiXiWanZi-Database-Test.git /opt/sixiwanzi
+cd /opt/sixiwanzi
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-在本地 Windows PowerShell 把 `zhijiang_subtitles.db` 压缩上传（2.12 GB 压成 `.gz` 后约 600~800 MB，上传快 3 倍）：
+在本地 Windows PowerShell 把 `sixiwanzi_subtitles.db` 压缩上传（压成 `.gz` 后体积大幅缩小，上传更快）：
 
 ```powershell
 # 本地打包上传（需先将服务器 IP 替换为你的真实 IP）
-tar -czf data/zhijiang_subtitles.db.tar.gz -C data zhijiang_subtitles.db
-scp data/zhijiang_subtitles.db.tar.gz root@<服务器IP>:/opt/zhijiang/data/
+tar -czf data/sixiwanzi_subtitles.db.tar.gz -C data sixiwanzi_subtitles.db
+scp data/sixiwanzi_subtitles.db.tar.gz root@<服务器IP>:/opt/sixiwanzi/data/
 ```
 
 服务器端解压：
 
 ```bash
-cd /opt/zhijiang/data
-tar -xzf zhijiang_subtitles.db.tar.gz
-rm -f zhijiang_subtitles.db.tar.gz
+cd /opt/sixiwanzi/data
+tar -xzf sixiwanzi_subtitles.db.tar.gz
+rm -f sixiwanzi_subtitles.db.tar.gz
 ```
 
 #### 2. 配置 systemd 常驻只读后端服务
 
-创建 `/etc/systemd/system/zhijiang-api.service`：
+创建 `/etc/systemd/system/sixiwanzi-api.service`：
 
 ```ini
 [Unit]
-Description=Zhijiang Subtitle Corpus Public Read-Only API
+Description=SiXiWanZi Subtitle Corpus Public Read-Only API
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/zhijiang
+WorkingDirectory=/opt/sixiwanzi
 Environment="ZJ_ENABLE_ADMIN=0"
 Environment="ZJ_SERVE_FRONTEND=1"
-Environment="ZJ_DB_PATH=/opt/zhijiang/data/zhijiang_subtitles.db"
+Environment="ZJ_DB_PATH=/opt/sixiwanzi/data/sixiwanzi_subtitles.db"
 Environment="ZJ_CORS_ORIGINS=https://你的域名.com"
-Environment="ZJ_GITHUB_URL=https://github.com/RicojrH/zhijiang-database"
-ExecStart=/opt/zhijiang/.venv/bin/uvicorn backend.app:public_app --host 127.0.0.1 --port 8000 --workers 2
+Environment="ZJ_GITHUB_URL=https://github.com/M1NGrr/SiXiWanZi-Database-Test"
+ExecStart=/opt/sixiwanzi/.venv/bin/uvicorn backend.app:public_app --host 127.0.0.1 --port 8000 --workers 2
 Restart=always
 RestartSec=3
 
@@ -98,8 +98,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now zhijiang-api
-sudo systemctl status zhijiang-api
+sudo systemctl enable --now sixiwanzi-api
+sudo systemctl status sixiwanzi-api
 ```
 
 #### 3. 用 Caddy 一键配置域名与自动 HTTPS
@@ -138,8 +138,8 @@ sudo systemctl reload caddy
 .\.venv\Scripts\python.exe run.py ingest-up all --limit 10
 .\.venv\Scripts\python.exe run.py backfill-asr --limit 0
 .\.venv\Scripts\python.exe run.py normalize-corpus
-.\.venv\Scripts\python.exe run.py tag-scenes --only-unknown
+.\.venv\Scripts\python.exe run.py score-voiceprints --all-parts --limit 0
 .\.venv\Scripts\python.exe run.py optimize-db
 ```
 
-然后用 `rsync`（仅传增量块，通常几十秒）或 `scp` 替换云端 `/opt/zhijiang/data/zhijiang_subtitles.db` 并执行 `sudo systemctl restart zhijiang-api` 即可无缝生效。
+然后用 `rsync`（仅传增量块，通常几十秒）或 `scp` 替换云端 `/opt/sixiwanzi/data/sixiwanzi_subtitles.db` 并执行 `sudo systemctl restart sixiwanzi-api` 即可无缝生效。

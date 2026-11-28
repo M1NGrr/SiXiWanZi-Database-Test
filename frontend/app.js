@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const CFG = window.ZHIJIANG_CONFIG || {};
+  const CFG = window.SIXIWANZI_CONFIG || window.ZHIJIANG_CONFIG || {};
   const API_BASE = (CFG.API_BASE || "").replace(/\/+$/, "");
 
   const MEMBER_THEMES = {
