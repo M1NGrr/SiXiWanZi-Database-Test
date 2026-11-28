@@ -1,0 +1,12 @@
+# 本地 GPU Qwen3-ASR-1.7B + Qwen3-ForcedAligner-0.6B 独立环境依赖
+# 建议安装到独立虚拟环境 .venv-qwen-asr (Python 3.12)，避免与 .venv 中 CUDA 12 声纹/Whisper 环境冲突：
+#   uv venv .venv-qwen-asr --python 3.12
+#   uv pip install --python .venv-qwen-asr\Scripts\python.exe torch==2.11.0+cu128 torchaudio==2.11.0+cu128 --index-url https://mirror.nju.edu.cn/pytorch/whl/cu128
+#   uv pip install --python .venv-qwen-asr\Scripts\python.exe -r requirements-qwen-asr.txt --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+qwen-asr>=0.0.6
+silero-vad>=5.1
+python-dotenv>=1.0.0
+huggingface_hub
+modelscope
+zhconv
+httpx

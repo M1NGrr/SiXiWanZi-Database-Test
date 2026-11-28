@@ -108,17 +108,163 @@ def apply_domain_corrections(
     return out
 
 
+_CN_DIGITS = "零一二三四五六七八九"
+_CN_DIGIT_MAP = {
+    "零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "俩": 2,
+    "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+}
+_CN_UNIT_MAP = {"十": 10, "百": 100, "千": 1000, "万": 10000}
+_ARABIC_PERCENT_RE = re.compile(r"(\d{1,3})%")
+_CN_PERCENT_RE = re.compile(r"百分之([零〇一二两三四五六七八九十百]{1,6})")
+_ARABIC_INT_RE = re.compile(r"(?<!\d)(\d{1,5})(?!\d)")
+_CN_NUM_RE = re.compile(r"[零〇一二两三四五六七八九十百千万]{1,7}")
+
+
+def _int_to_cn_spoken(n: int) -> str:
+    """将 0~99999 整数转为常见中文口语写法（如 12->十二, 1500->一千五百, 39->三十九）."""
+    if n < 0 or n > 99999:
+        return ""
+    if n == 0:
+        return "零"
+    if n < 10:
+        return _CN_DIGITS[n]
+    if 10 <= n < 20:
+        return "十" + ("" if n == 10 else _CN_DIGITS[n % 10])
+
+    parts: List[str] = []
+    units = ((10000, "万"), (1000, "千"), (100, "百"), (10, "十"), (1, ""))
+    rem = n
+    need_zero = False
+    for val, unit in units:
+        d = rem // val
+        rem %= val
+        if d > 0:
+            if need_zero and parts:
+                parts.append("零")
+            parts.append(_CN_DIGITS[d] + unit)
+            need_zero = False
+        elif parts:
+            need_zero = True
+    return "".join(parts)
+
+
+def _int_to_cn_digits(s: str) -> str:
+    """逐位转中文数字（适用于年份 2026->二零二六 或编号 1128->一一二八）."""
+    return "".join(_CN_DIGITS[int(ch)] for ch in s if ch.isdigit())
+
+
+def _cn_to_int(cn: str) -> Optional[int]:
+    """解析常见中文数字串（如 十二->12、一千五百->1500、二零二六->2026），无效则返回 None."""
+    if not cn:
+        return None
+    # 纯逐位数字（无十百千万），如 二零二六 / 一一二八
+    if not any(u in cn for u in _CN_UNIT_MAP):
+        if len(cn) > 5 or not all(ch in _CN_DIGIT_MAP for ch in cn):
+            return None
+        if len(cn) == 1:
+            return _CN_DIGIT_MAP[cn]
+        return int("".join(str(_CN_DIGIT_MAP[ch]) for ch in cn))
+
+    total = 0
+    section = 0
+    num = 0
+    has_val = False
+    for ch in cn:
+        if ch in _CN_DIGIT_MAP:
+            num = _CN_DIGIT_MAP[ch]
+            has_val = True
+        elif ch in _CN_UNIT_MAP:
+            unit = _CN_UNIT_MAP[ch]
+            if unit == 10000:
+                section = (section + (num if has_val else 1)) * unit
+                total += section
+                section = 0
+            else:
+                section += (num if has_val else 1) * unit
+            num = 0
+            has_val = False
+        else:
+            return None
+    val = total + section + num
+    return val if 0 <= val <= 99999 else None
+
+
+def expand_numeral_variants(term: str) -> List[str]:
+    """生成中阿数字等价扩展词（如 39% <-> 百分之三十九，12点 <-> 十二点，1500 <-> 一千五百）.
+
+    仅在词条包含数字或中文数词时触发，上限 4 个变体以防止 FTS5 表达式膨胀。
+    """
+    raw = (term or "").strip()
+    if not raw:
+        return []
+    out: List[str] = [raw]
+    seen: Set[str] = {raw.lower()}
+
+    def _push(v: str) -> None:
+        v = v.strip()
+        if v and v.lower() not in seen and len(out) < 4:
+            seen.add(v.lower())
+            out.append(v)
+
+    # 1. 百分比双向转换：39% <-> 百分之三十九
+    m_pct = _ARABIC_PERCENT_RE.search(raw)
+    if m_pct:
+        val = int(m_pct.group(1))
+        cn = _int_to_cn_spoken(val)
+        if cn:
+            _push(_ARABIC_PERCENT_RE.sub(f"百分之{cn}", raw, count=1))
+    m_cnpct = _CN_PERCENT_RE.search(raw)
+    if m_cnpct:
+        val_opt = _cn_to_int(m_cnpct.group(1))
+        if val_opt is not None:
+            _push(_CN_PERCENT_RE.sub(f"{val_opt}%", raw, count=1))
+
+    # 2. 阿拉伯整数 -> 中文口语 / 逐位读法（如 12点 -> 十二点，2026年 -> 二零二六年）
+    m_ar = _ARABIC_INT_RE.search(raw)
+    if m_ar and not m_pct:
+        num_str = m_ar.group(1)
+        val = int(num_str)
+        if 1900 <= val <= 2099 or (len(num_str) >= 3 and num_str.startswith("0")):
+            _push(_ARABIC_INT_RE.sub(_int_to_cn_digits(num_str), raw, count=1))
+        spoken = _int_to_cn_spoken(val)
+        if spoken:
+            _push(_ARABIC_INT_RE.sub(spoken, raw, count=1))
+        if len(num_str) == 4 and not (1900 <= val <= 2099):
+            _push(_ARABIC_INT_RE.sub(_int_to_cn_digits(num_str), raw, count=1))
+
+    _cn_unit_follow = "点分秒天年月日号个次遍块元毛角斤米岁级名层楼集期场倍成折"
+
+    # 3. 中文数词 -> 阿拉伯数字（如 十二点 -> 12点，第一名 -> 第1名，一千五百 -> 1500）
+    # 单字中文数字仅在带量词/序数词语境下转换，避免误伤“四禧丸子 / 又一 / 一起”等专有名词与日常词
+    if not m_cnpct and not m_ar:
+        m_cn = _CN_NUM_RE.search(raw)
+        if m_cn:
+            cn_sub = m_cn.group(0)
+            s_pos, e_pos = m_cn.span()
+            prev_ch = raw[s_pos - 1] if s_pos > 0 else ""
+            next_ch = raw[e_pos] if e_pos < len(raw) else ""
+            is_multi = len(cn_sub) >= 2
+            has_quant_ctx = (prev_ch == "第") or (bool(next_ch) and next_ch in _cn_unit_follow)
+            if is_multi or has_quant_ctx:
+                val_opt = _cn_to_int(cn_sub)
+                if val_opt is not None:
+                    _push(raw[:s_pos] + str(val_opt) + raw[e_pos:])
+
+    return out
+
+
 def build_fuzzy_fts_query(
     raw_query: str,
     *,
     fuzzy: bool = True,
     rules_path: Path = DEFAULT_RULES_PATH,
 ) -> Tuple[str, Dict[str, List[str]]]:
-    """构造 FTS5 查询表达式；fuzzy=True 时自动对同音/别称/Tier 3 歧义词做 OR 扩展.
+    """构造 FTS5 查询表达式；fuzzy=True 时自动对同音/别称/Tier 3 歧义词及中阿数字做 OR 扩展.
 
     示例：
-      - raw_query='小海诺' -> '("小 海 诺" OR "小 海 螺" OR "小 螺")'
-      - raw_query='心宜 唱歌' -> '("心 宜" OR "心 仪" OR "欣 怡" OR "心 怡") AND "唱 歌"'
+      - raw_query='四禧丸子' -> '("四 禧 丸 子" OR "四 喜 丸 子" ...)'
+      - raw_query='39%' -> '("39" OR "百 分 之 三 十 九")'
+      - raw_query='12点' -> '("12 点" OR "十 二 点")'
     """
     if not raw_query or not raw_query.strip():
         return "", {}
@@ -136,12 +282,22 @@ def build_fuzzy_fts_query(
             norm_key = "".join(tokenize_list(part))
             variants = bundle.fuzzy_lookup.get(norm_key)
 
-        if variants and len(variants) > 1:
-            # 保持用户输入的原词排在第一位
-            ordered = [part] + [v for v in variants if v.lower() != part.lower()]
+        combined: List[str] = [part]
+        seen_raw: Set[str] = {part.lower()}
+        if variants:
+            for v in variants:
+                if v.lower() not in seen_raw:
+                    seen_raw.add(v.lower())
+                    combined.append(v)
+        for nv in expand_numeral_variants(part):
+            if nv.lower() not in seen_raw:
+                seen_raw.add(nv.lower())
+                combined.append(nv)
+
+        if len(combined) > 1:
             sub_phrases: List[str] = []
             seen_phrases: Set[str] = set()
-            for v in ordered:
+            for v in combined:
                 toks = tokenize_list(v)
                 if not toks:
                     continue
@@ -151,7 +307,7 @@ def build_fuzzy_fts_query(
                     sub_phrases.append(f'"{ph}"')
             if len(sub_phrases) > 1:
                 clauses.append("(" + " OR ".join(sub_phrases) + ")")
-                expanded_map[part] = ordered
+                expanded_map[part] = combined
                 continue
             if len(sub_phrases) == 1:
                 clauses.append(sub_phrases[0])

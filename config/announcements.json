@@ -1,11 +1,20 @@
 {
   "items": [
     {
+      "id": "2026-11-28-v040",
+      "tag": "v0.4.0 更新",
+      "level": "info",
+      "date": "2026-11-28",
+      "pinned": true,
+      "active": true,
+      "content": "v0.4.0 引擎升级：引入本地 GPU Qwen3-ASR-1.7B + ForcedAligner 字幕精校流水线，升级 v1.2 专有名词与同音词表，新增中文/阿拉伯数词双向模糊检索（如 39% ↔ 百分之三十九、12点 ↔ 十二点）与多原型声纹校准。"
+    },
+    {
       "id": "2026-11-27-init",
       "tag": "测试上线",
       "level": "info",
       "date": "2026-11-27",
-      "pinned": true,
+      "pinned": false,
       "active": true,
       "content": "四禧丸子直播语料库初版搭建完成，覆盖沐霂、又一、恬豆、梨安四位成员直播回放字幕检索。本项目基于开源项目 zhijiang-database（原作者 B站 @没品人类之一）改造。"
     }

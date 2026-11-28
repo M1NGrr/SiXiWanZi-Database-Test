@@ -945,3 +945,84 @@ def test_manual_correction_locks_batch_review_revert_sync_and_public_isolation(t
     norm2 = run_corpus_normalization(db, dry_run=False, rules_path=tmp_rules)
     assert norm2["updated"] == 1
     assert SearchService(db).search(SearchQuery(q="影视原声", fuzzy=False))["pagination"]["total"] == 1
+
+
+def test_numeral_fuzzy_search_v12_rules_ingest_quality_and_multiprototype_sv(tmp_path: Path) -> None:
+    import numpy as np
+    from sixiwanzi_corpus.normalizer import expand_numeral_variants, load_rules
+    from sixiwanzi_corpus.voiceprint import (
+        build_member_prototype_matrix,
+        classify_utterance_scores,
+        reduce_prototype_sims,
+    )
+
+    # 1. 校验 v1.2 扩充纠错规则（Tier 1 零歧义 + Tier 2 语境保护）
+    load_rules.cache_clear()
+    assert apply_domain_corrections("谢谢小木标和大理老师，猫猫臂拿下，给主播上剑和谢谢建长，抽徐环资格！") == (
+        "谢谢小沐标和大梨老师，猫猫币拿下，给主播上舰和谢谢舰长，抽虚环资格！"
+    )
+    # 语境保护不得误伤日常词：称得上剑豪、健康、小目标、甜豆
+    assert apply_domain_corrections("称得上剑豪的人先定个小目标吃甜豆") == "称得上剑豪的人先定个小目标吃甜豆"
+
+    # 2. 校验中阿数字双向模糊扩展（且不误伤 四禧丸子 / 又一）
+    assert "百分之三十九" in expand_numeral_variants("39%")
+    assert "39%" in expand_numeral_variants("百分之三十九")
+    assert "十二点" in expand_numeral_variants("12点")
+    assert "12点" in expand_numeral_variants("十二点")
+    assert "1500" in expand_numeral_variants("一千五百")
+    assert "第1名" in expand_numeral_variants("第一名")
+    assert expand_numeral_variants("四禧丸子") == ["四禧丸子"]
+    assert expand_numeral_variants("又一") == ["又一"]
+
+    # 端到端 FTS5 检索验证：库内存 Qwen3 中文数字，搜阿拉伯数字可直接命中
+    db_file = tmp_path / "num_search.db"
+    db = CorpusDB(db_file)
+    db.init_db()
+    from sixiwanzi_corpus.db import SubtitleRow, VideoRecord
+
+    db.save_video_and_subtitles(
+        VideoRecord(bvid="BV1NUM000001", page=1, up_name="恬豆", pub_date="2026-11-28", subtitle_status="ok"),
+        [
+            SubtitleRow(up_name="恬豆", bvid="BV1NUM000001", page=1, pub_date="2026-11-28", start_sec=1.0, end_sec=3.0, content="我已经进度百分之三十九了，周五晚上十二点上线"),
+            SubtitleRow(up_name="恬豆", bvid="BV1NUM000001", page=1, pub_date="2026-11-28", start_sec=4.0, end_sec=6.0, content="我有一千五百的猫猫币，不是第一名啊"),
+        ],
+    )
+    svc = SearchService(db)
+    assert svc.search(SearchQuery(q="39%", fuzzy=True))["pagination"]["total"] == 1
+    assert svc.search(SearchQuery(q="12点", fuzzy=True))["pagination"]["total"] == 1
+    assert svc.search(SearchQuery(q="1500", fuzzy=True))["pagination"]["total"] == 1
+    assert svc.search(SearchQuery(q="第1名", fuzzy=True))["pagination"]["total"] == 1
+    assert svc.search(SearchQuery(q="39%", fuzzy=False))["pagination"]["total"] == 0
+
+    # 3. 校验多原型声纹模板 max 归约与按成员独立阈值
+    members_vp = {
+        "沐霂": {
+            "embedding": [1.0, 0.0, 0.0],
+            "sub_embeddings": [{"tag": "excited", "embedding": [0.0, 1.0, 0.0]}],
+        },
+        "梨安": {
+            "embedding": [0.0, 0.0, 1.0],
+        },
+    }
+    names, mat, owners = build_member_prototype_matrix(members_vp)
+    assert names == ["沐霂", "梨安"]
+    assert mat.shape == (3, 3)
+    assert owners == [0, 0, 1]
+    # 测试一条靠近沐霂 excited 子原型的向量 [0, 1, 0]
+    probe = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
+    reduced = reduce_prototype_sims(probe @ mat.T, owners, len(names))
+    assert reduced.shape == (2, 2)
+    assert reduced[0, 0] == pytest.approx(1.0, abs=1e-5)
+    assert reduced[1, 1] == pytest.approx(1.0, abs=1e-5)
+
+    seq = [
+        {"id": 1, "start_sec": 1.0, "end_sec": 3.0, "sim_mean": 0.48, "sim_peak": 0.48, "best_member": "沐霂"},
+        {"id": 2, "start_sec": 4.0, "end_sec": 6.0, "sim_mean": 0.48, "sim_peak": 0.48, "best_member": "梨安"},
+    ]
+    classify_utterance_scores(
+        seq,
+        host_thr=0.50,
+        per_member_thresholds={"沐霂": {"host_thr": 0.47}},
+    )
+    assert seq[0]["speaker_label"] == "host" and seq[0]["speaker_name"] == "沐霂"
+    assert seq[1]["speaker_label"] == "external"

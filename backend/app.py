@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from sixiwanzi_corpus import __version__ as CORPUS_VERSION
 from sixiwanzi_corpus.config import PROJECT_ROOT, load_config
 from sixiwanzi_corpus.db import CorpusDB
 
@@ -56,7 +57,7 @@ def create_app(
 
     app = FastAPI(
         title="四禧丸子直播语料库 - Backend API",
-        version="0.3.0",
+        version=CORPUS_VERSION,
         description=(
             "前后端分离架构后端服务（基于 RicojrH/zhijiang-database 改造）。"
             "公网部署时请使用 public_app（仅暴露 /api/v1/* 只读检索接口）；"

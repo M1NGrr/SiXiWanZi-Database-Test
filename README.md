@@ -2,6 +2,7 @@
 
 面向二创剪辑师与社区粉丝的四禧丸子直播回放字幕语料库，覆盖 **沐霂、又一、恬豆、梨安** 4 位成员的 B 站直播回放（支持 B 站官方 AI 字幕增量抓取、本地 GPU `faster-whisper` 语音补录、专有名词纠错、同音/别称模糊检索与前后端分离部署）。
 
+- **当前版本**：`v0.4.0`（2026-11-28）
 - **维护者**：`M1NG`
 - **本仓库地址**：https://github.com/M1NGrr/SiXiWanZi-Database-Test
 - **开源协议**：[MIT License](LICENSE)
@@ -37,10 +38,11 @@
   - `frontend/`：纯静态响应式公开前端（适配手机 / 平板 / 电脑），按 4 位成员官方应援色区分角色，支持成员多选、场景多选、上下双翻页/跳页、前后 25 秒上下文展开、一键复制与直达 B 站原视频时间戳；
   - `backend/`：FastAPI 后端区分 `public_app`（公网纯只读检索接口 `/api/v1/*`，零写操作、零 Cookie 暴露）与 `local_app`（本地运维管理 `/api/v1/admin/*` 与 `/debug` 调试台）。
 - **高性能中文全文检索**：SQLite WAL + FTS5 外部内容索引 + 中英混排字符级分词，支持单字、多词 AND、日期与 BV 号过滤。
-- **双通道字幕采集**：
-  - 直连 4 位成员 B 站「直播回放」列表（`series_id`），增量断点续抓；
-  - 针对无自带字幕分 P，支持仅拉取纯音频 DASH 流 + 本地 NVIDIA GPU `faster-whisper (large-v3-turbo)` 多进程补录，转完即删临时音频、零视频囤积。
-- **专有名词纠错与同音模糊搜索**：内置 [config/correction_rules.json](config/correction_rules.json) 分级纠错规则与同音/别称扩展词表（如搜 `四禧丸子` 兼搜 `四喜丸子`，搜 `小沐标` 兼搜 `小目标`，搜 `向心梨` 兼搜 `向心力`，搜 `恬豆包` 兼搜 `甜豆包`），全局繁转简（`zhconv`）。
+- **三通道字幕采集与质检闭环**：
+  - 直连 4 位成员 B 站「直播回放」列表（`series_id`），增量断点续抓并自动执行字幕质量巡检（低语速密度 / 尾部截断自动标黄 `needs_asr_review`）；
+  - 针对无自带字幕分 P，支持仅拉取纯音频 DASH 流 + 本地 NVIDIA GPU `faster-whisper (large-v3-turbo)` 补录；
+  - 新增独立环境本地 GPU **`Qwen3-ASR-1.7B` + `Qwen3-ForcedAligner-0.6B`** 高速校正引擎（[scripts/run_qwen3_correction.ps1](scripts/run_qwen3_correction.ps1)），结合成员定制热词上下文、NumPy 向量化 VAD、两段解耦动态分桶推理与多原型 CAM++ 声纹识别，大幅提升中文口语准确率与时间轴精度。
+- **专有名词纠错、同音与数词双向模糊搜索**：内置 [config/correction_rules.json](config/correction_rules.json)（v1.2）分级纠错规则、同音/别称扩展词表（如 `四禧丸子`/`小沐标`/`向心梨`/`恬豆包` 等）及中文↔阿拉伯数词双向模糊检索（如 `39%` ↔ `百分之三十九`、`12点` ↔ `十二点`），全局繁转简（`zhconv`）。
 
 ---
 
@@ -70,6 +72,7 @@
 ├── DEPLOY.md                    # 云端公网部署参考教程
 ├── requirements.txt             # 核心与云端后端轻量依赖
 ├── requirements-asr.txt         # 本地 GPU Whisper 补录可选依赖
+├── requirements-qwen-asr.txt    # 独立环境本地 GPU Qwen3-ASR-1.7B 精校依赖（Python 3.12 + CUDA 12.8）
 └── requirements-sv.txt          # 本地 GPU CAM++ 声纹识别可选依赖
 ```
 
@@ -95,8 +98,11 @@ python run.py backfill-asr --limit 0
 
 # 5. 专有名词纠错 + 可选四成员声纹识别（需先安装 requirements-sv.txt）+ FTS5 索引优化
 python run.py normalize-corpus
-python run.py score-voiceprints --all-parts --limit 0
+python run.py score-voiceprints --limit 0
 python run.py optimize-db
+
+# 5.1 可选：在独立 .venv-qwen-asr 环境中运行 Qwen3-ASR-1.7B 高速精校流水线
+# powershell -ExecutionPolicy Bypass -File scripts\run_qwen3_correction.ps1 -Mode p1
 
 # 6. 启动本地服务（公开前端: http://127.0.0.1:8000/  本地运维台: http://127.0.0.1:8000/debug）
 python run.py serve

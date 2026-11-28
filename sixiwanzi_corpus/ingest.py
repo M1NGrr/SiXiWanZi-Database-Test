@@ -213,6 +213,22 @@ def ingest_bvids(
                         )
                         for item in cleaned_items
                     ]
+                    part_dur = int(p.duration_sec or vinfo.duration_sec or 0)
+                    part_extra = dict(extra_meta)
+                    quality_warn = ""
+                    if rows and part_dur >= 600 and source_tag == "bilibili_ai":
+                        lpm = round(len(rows) * 60.0 / part_dur, 2)
+                        span_cov = round(
+                            max(0.0, rows[-1].end_sec - rows[0].start_sec) / part_dur, 3
+                        )
+                        needs_review = bool(lpm < 8.0 or span_cov < 0.70)
+                        part_extra["subtitle_quality"] = {
+                            "lpm": lpm,
+                            "span_cov": span_cov,
+                            "needs_asr_review": needs_review,
+                        }
+                        if needs_review:
+                            quality_warn = f" [质检预警: lpm={lpm}, cov={span_cov*100:.1f}%，建议 Qwen3 补录]"
                     vid_rec = VideoRecord(
                         bvid=vinfo.bvid,
                         page=p.page,
@@ -224,11 +240,11 @@ def ingest_bvids(
                         part_title=p.part_title,
                         pub_date=vinfo.pub_date,
                         pub_ts=vinfo.pub_ts,
-                        duration_sec=p.duration_sec or vinfo.duration_sec,
+                        duration_sec=part_dur,
                         subtitle_lan=chosen.lan,
                         subtitle_status="ok" if rows else "no_subtitle",
                         line_count=len(rows),
-                        extra_meta=extra_meta,
+                        extra_meta=part_extra,
                     )
                     inserted, dup = db.save_video_and_subtitles(
                         vid_rec, rows, replace_existing=force
@@ -239,7 +255,7 @@ def ingest_bvids(
                         summary.parts_ok += 1
                         emit(
                             f"[{idx}/{total_bvids}] 入库成功: {up_name} {vinfo.bvid} P{p.page} "
-                            f"({vinfo.pub_date}) [{chosen.lan}] +{inserted}条 | {vinfo.title[:28]}"
+                            f"({vinfo.pub_date}) [{chosen.lan}] +{inserted}条{quality_warn} | {vinfo.title[:28]}"
                         )
                         db.log_ingest(
                             run_id,

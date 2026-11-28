@@ -100,11 +100,61 @@ def load_voiceprints(path: Path = DEFAULT_VOICEPRINTS_PATH) -> Dict[str, Any]:
     if "thresholds" not in data or not isinstance(data["thresholds"], dict):
         data["thresholds"] = dict(DEFAULT_THRESHOLDS)
     else:
-        merged = dict(DEFAULT_THRESHOLDS)
-        merged.update({k: float(v) for k, v in data["thresholds"].items() if k in DEFAULT_THRESHOLDS})
+        raw_thrs = data["thresholds"]
+        merged: Dict[str, Any] = dict(DEFAULT_THRESHOLDS)
+        merged.update({k: float(v) for k, v in raw_thrs.items() if k in DEFAULT_THRESHOLDS})
+        if isinstance(raw_thrs.get("per_member"), dict):
+            per_m: Dict[str, Dict[str, float]] = {}
+            for m_name, m_cfg in raw_thrs["per_member"].items():
+                if isinstance(m_cfg, dict):
+                    per_m[str(m_name)] = {
+                        k: float(v) for k, v in m_cfg.items() if k in DEFAULT_THRESHOLDS
+                    }
+            if per_m:
+                merged["per_member"] = per_m
         data["thresholds"] = merged
     data.setdefault("members", {})
     return data
+
+
+def build_member_prototype_matrix(members_vp: Dict[str, Any]) -> Tuple[List[str], Any, List[int]]:
+    """构造支持多原型子模板（主模板 + sub_embeddings）的归一化声纹矩阵.
+
+    返回 (member_names, proto_mat[P, D], proto_member_idx[P])；
+    向后兼容单向量旧格式（每人仅 1 条 embedding 时 P == M）。
+    """
+    np = _require_numpy()
+    member_names = list(members_vp.keys())
+    vecs: List[Any] = []
+    owners: List[int] = []
+    for m_idx, m in enumerate(member_names):
+        entry = members_vp[m] or {}
+        if entry.get("embedding"):
+            vecs.append(np.array(entry["embedding"], dtype=np.float32))
+            owners.append(m_idx)
+        for sub in entry.get("sub_embeddings") or []:
+            raw_v = sub.get("embedding") if isinstance(sub, dict) else sub
+            if raw_v:
+                vecs.append(np.array(raw_v, dtype=np.float32))
+                owners.append(m_idx)
+    if not vecs:
+        raise ValueError("声纹模板矩阵为空")
+    mat = np.stack(vecs, axis=0)
+    mat /= np.linalg.norm(mat, axis=1, keepdims=True) + 1e-8
+    return member_names, mat, owners
+
+
+def reduce_prototype_sims(raw_sims: Any, proto_member_idx: Sequence[int], n_members: int) -> Any:
+    """将 (..., P) 的原型余弦相似度按成员取最大值归约到 (..., M)."""
+    np = _require_numpy()
+    if len(proto_member_idx) == n_members and list(proto_member_idx) == list(range(n_members)):
+        return raw_sims
+    is_1d = raw_sims.ndim == 1
+    mat = raw_sims[None, :] if is_1d else raw_sims
+    out = np.full((mat.shape[0], n_members), -1.0, dtype=np.float32)
+    for p_idx, m_idx in enumerate(proto_member_idx):
+        out[:, m_idx] = np.maximum(out[:, m_idx], mat[:, p_idx])
+    return out[0] if is_1d else out
 
 
 def save_voiceprints(data: Dict[str, Any], path: Path = DEFAULT_VOICEPRINTS_PATH) -> Path:
@@ -121,18 +171,29 @@ def classify_utterance_scores(
     smooth_floor: float = DEFAULT_THRESHOLDS["smooth_floor"],
     strong_neighbor: float = DEFAULT_THRESHOLDS["strong_neighbor"],
     neighbor_gap: float = DEFAULT_THRESHOLDS["neighbor_gap"],
+    per_member_thresholds: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> List[Dict[str, Any]]:
-    """纯 Python 四成员三段式声纹判定（直接原地更新并返回 items，不依赖 numpy/onnx）."""
+    """纯 Python 四成员三段式声纹判定（支持按成员独立阈值，不依赖 numpy/onnx）."""
+    pm = per_member_thresholds or {}
+
+    def _m_thr(member: str, key: str, default_val: float) -> float:
+        cfg = pm.get(member)
+        if cfg and key in cfg:
+            return float(cfg[key])
+        return default_val
+
     for it in items:
         sim_mean = float(it.get("sim_mean", 0.0))
         sim_peak = float(it.get("sim_peak", sim_mean))
         best_member = str(it.get("best_member") or "")
         peak_member = str(it.get("peak_member") or best_member)
-        if sim_mean >= host_thr:
+        eff_host_thr = _m_thr(best_member, "host_thr", host_thr)
+        eff_peak_thr = _m_thr(peak_member, "peak_thr", peak_thr)
+        if sim_mean >= eff_host_thr:
             it["speaker_label"] = "host"
             it["speaker_name"] = best_member
             it["reason"] = "direct"
-        elif sim_peak >= peak_thr:
+        elif sim_peak >= eff_peak_thr:
             it["speaker_label"] = "mixed"
             it["speaker_name"] = peak_member
             it["reason"] = "peak"
@@ -153,9 +214,10 @@ def classify_utterance_scores(
             if gap > neighbor_gap:
                 return None
             nb_sim = float(nb.get("sim_mean", 0.0))
-            if nb_sim < strong_neighbor:
-                return None
             nb_name = str(nb.get("speaker_name") or nb.get("best_member") or "")
+            eff_strong = _m_thr(nb_name, "strong_neighbor", strong_neighbor)
+            if nb_sim < eff_strong:
+                return None
             if isinstance(member_sims, dict) and nb_name:
                 cur_sim_for_nb = float(member_sims.get(nb_name, 0.0))
             else:
@@ -163,7 +225,8 @@ def classify_utterance_scores(
                 if cur_best and nb_name and cur_best != nb_name:
                     return None
                 cur_sim_for_nb = float(it.get("sim_mean", 0.0))
-            if cur_sim_for_nb >= smooth_floor:
+            eff_floor = _m_thr(nb_name, "smooth_floor", smooth_floor)
+            if cur_sim_for_nb >= eff_floor:
                 return (nb_sim, nb_name)
             return None
 
@@ -644,7 +707,9 @@ def enroll_member_voiceprint(
     vp_data = load_voiceprints(voiceprints_path)
     vp_data["model"] = model_file.name
     vp_data["dim"] = int(centroid.shape[0])
-    vp_data["members"][resolved_up] = {
+    existing_entry = vp_data["members"].get(resolved_up) or {}
+    existing_subs = list(existing_entry.get("sub_embeddings") or [])
+    new_entry = {
         "bvid": bvid,
         "page": int(page),
         "start_sec": round(float(start_sec), 2),
@@ -654,6 +719,9 @@ def enroll_member_voiceprint(
         "clean_p10": p10,
         "embedding": [round(float(x), 6) for x in centroid.tolist()],
     }
+    if existing_subs:
+        new_entry["sub_embeddings"] = existing_subs
+    vp_data["members"][resolved_up] = new_entry
     save_voiceprints(vp_data, voiceprints_path)
 
     return {
@@ -741,6 +809,7 @@ def _score_prefetched_part(
     vp_mat: Any,
     member_names: Sequence[str],
     thrs: Dict[str, Any],
+    proto_member_idx: Optional[Sequence[int]] = None,
     batch_size: int = 64,
     precomputed_pack: Optional[Dict[str, Any]] = None,
     mono: Any = None,
@@ -769,9 +838,18 @@ def _score_prefetched_part(
             else np.zeros((0, 192), dtype=np.float32)
         )
 
-        # 向量化四成员点积
-        whole_sims = whole_embs @ vp_mat.T if len(whole_embs) else np.zeros((0, len(member_names)), dtype=np.float32)
-        win_sims = win_embs @ vp_mat.T if len(win_embs) else np.zeros((0, len(member_names)), dtype=np.float32)
+        # 向量化四成员（含多原型子模板 max 归约）点积
+        eff_owners = proto_member_idx if proto_member_idx is not None else list(range(len(member_names)))
+        whole_sims = (
+            reduce_prototype_sims(whole_embs @ vp_mat.T, eff_owners, len(member_names))
+            if len(whole_embs)
+            else np.zeros((0, len(member_names)), dtype=np.float32)
+        )
+        win_sims = (
+            reduce_prototype_sims(win_embs @ vp_mat.T, eff_owners, len(member_names))
+            if len(win_embs)
+            else np.zeros((0, len(member_names)), dtype=np.float32)
+        )
 
         # 聚合每个整句的滑窗峰值
         peak_by_owner: Dict[int, Tuple[float, str]] = {}
@@ -841,7 +919,8 @@ def _score_prefetched_part(
                     }
                 )
                 continue
-            sims_all = emb @ vp_mat.T
+            eff_owners = proto_member_idx if proto_member_idx is not None else list(range(len(member_names)))
+            sims_all = reduce_prototype_sims(emb @ vp_mat.T, eff_owners, len(member_names))
             best_idx = int(np.argmax(sims_all))
             sim_mean = float(sims_all[best_idx])
             best_member = member_names[best_idx]
@@ -853,7 +932,7 @@ def _score_prefetched_part(
                 for off in range(0, len(raw_seg) - win_n + 1, hop_n):
                     w_emb = _compute_embedding(engine, raw_seg[off : off + win_n], sr)
                     if w_emb is not None:
-                        w_sims = w_emb @ vp_mat.T
+                        w_sims = reduce_prototype_sims(w_emb @ vp_mat.T, eff_owners, len(member_names))
                         w_idx = int(np.argmax(w_sims))
                         w_val = float(w_sims[w_idx])
                         if w_val > sim_peak:
@@ -881,6 +960,7 @@ def _score_prefetched_part(
         smooth_floor=float(thrs.get("smooth_floor", DEFAULT_THRESHOLDS["smooth_floor"])),
         strong_neighbor=float(thrs.get("strong_neighbor", DEFAULT_THRESHOLDS["strong_neighbor"])),
         neighbor_gap=float(thrs.get("neighbor_gap", DEFAULT_THRESHOLDS["neighbor_gap"])),
+        per_member_thresholds=thrs.get("per_member") if isinstance(thrs.get("per_member"), dict) else None,
     )
 
     updates: List[Tuple[int, str, Optional[float], str]] = []
@@ -992,12 +1072,7 @@ def score_video_part(
     if not members_vp:
         raise ValueError("声纹库为空，请先执行 enroll-voiceprint")
 
-    member_names = list(members_vp.keys())
-    vp_mat = np.stack(
-        [np.array(members_vp[m]["embedding"], dtype=np.float32) for m in member_names],
-        axis=0,
-    )
-    vp_mat /= np.linalg.norm(vp_mat, axis=1, keepdims=True) + 1e-8
+    member_names, vp_mat, proto_member_idx = build_member_prototype_matrix(members_vp)
     thrs = voiceprints_data.get("thresholds") or DEFAULT_THRESHOLDS
 
     with db.session() as conn:
@@ -1048,6 +1123,7 @@ def score_video_part(
         engine=extractor,
         vp_mat=vp_mat,
         member_names=member_names,
+        proto_member_idx=proto_member_idx,
         thrs=thrs,
         batch_size=batch_size,
         mono=mono,
@@ -1106,12 +1182,7 @@ def run_voiceprint_scoring(
     if not members_vp:
         raise RuntimeError(f"声纹模板为空: {voiceprints_path}，请先运行 enroll-voiceprint")
 
-    member_names = list(members_vp.keys())
-    vp_mat = np.stack(
-        [np.array(members_vp[m]["embedding"], dtype=np.float32) for m in member_names],
-        axis=0,
-    )
-    vp_mat /= np.linalg.norm(vp_mat, axis=1, keepdims=True) + 1e-8
+    member_names, vp_mat, proto_member_idx = build_member_prototype_matrix(members_vp)
     thrs = vp_data.get("thresholds") or DEFAULT_THRESHOLDS
 
     model_file = ensure_campplus_model(model_path, progress_cb=progress_cb)
@@ -1279,6 +1350,7 @@ def run_voiceprint_scoring(
                 engine=engine,
                 vp_mat=vp_mat,
                 member_names=member_names,
+                proto_member_idx=proto_member_idx,
                 thrs=thrs,
                 batch_size=batch_size,
                 precomputed_pack=msg["pack"],
