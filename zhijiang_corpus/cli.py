@@ -414,6 +414,11 @@ def cmd_score_voiceprints(args: argparse.Namespace) -> int:
             limit=eff_limit,
             voiceprints_path=Path(args.voiceprints) if args.voiceprints else DEFAULT_VOICEPRINTS_PATH,
             model_path=Path(args.model) if args.model else DEFAULT_MODEL_PATH,
+            device=args.device,
+            batch_size=args.batch_size,
+            prefetch=args.prefetch,
+            shard_index=args.shard_index,
+            shard_total=args.shard_total,
             num_threads=args.threads,
             keep_audio=args.keep_audio,
             progress_cb=lambda m: print(m, flush=True),
@@ -657,6 +662,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_sv.add_argument("--force", action="store_true", help="强制重跑已打分的分 P")
     p_sv.add_argument("--voiceprints", default=None, help="声纹模板 JSON 路径")
     p_sv.add_argument("--model", default=None, help="自定义 CAM++ ONNX 模型路径")
+    p_sv.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"], help="推理设备（默认 auto 优先 CUDA GPU）")
+    p_sv.add_argument("--batch-size", type=int, default=64, help="GPU 批量推理大小（默认 64）")
+    p_sv.add_argument("--prefetch", type=int, default=3, help="后台并发下载+转码+特征提取预取线程数（默认 3）")
+    p_sv.add_argument("--shard-index", type=int, default=0, help="分片序号（0 开始）")
+    p_sv.add_argument("--shard-total", type=int, default=1, help="分片总数")
     p_sv.add_argument("--threads", type=int, default=4, help="ONNX CPU 线程数（默认 4）")
     p_sv.add_argument("--keep-audio", action="store_true", help="保留临时 WAV 文件（调试用）")
     p_sv.add_argument("--cookie", default=None, help="临时覆盖 B 站 Cookie")

@@ -1,3 +1,8 @@
 # 本地离线声纹识别可选依赖（仅本地打分/注册机器安装，云端检索后端无需安装）
 sherpa-onnx>=1.10.0
 numpy>=1.26.0
+# 可选 GPU 批量加速（需搭配 requirements-asr.txt 的 CUDA 12 DLL，RTX 5090 速度提升 ~100x）：
+# onnxruntime-gpu==1.24.4
+# kaldi-native-fbank>=1.22.0
+# nvidia-cuda-runtime-cu12
+# nvidia-cufft-cu12
